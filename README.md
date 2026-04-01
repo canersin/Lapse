@@ -22,7 +22,7 @@ A high-performance, lightweight game clipper for Linux, written in Rust.
 The easiest way to install Lapse on any Linux distribution is via the universal installation script:
 
 ```bash
-git clone https://github.com/yourusername/lapse.git
+git clone https://github.com/canersin/lapse.git
 cd lapse
 ./install.sh
 ```
