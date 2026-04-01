@@ -2703,6 +2703,7 @@ dependencies = [
  "rfd",
  "rodio",
  "serde",
+ "serde_json",
  "signal-hook",
  "toml",
  "tray-icon",

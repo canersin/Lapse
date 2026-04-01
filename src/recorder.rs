@@ -9,7 +9,7 @@ pub struct Recorder {
     mode: RecordingMode,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RecordingMode {
     None,
     Replay,

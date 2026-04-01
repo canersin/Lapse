@@ -1,9 +1,6 @@
 # Lapse
-<<<<<<< HEAD
-A Medal alternative written in Rust for Linux
-=======
 
-A high-performance, lightweight game clipper for Linux, rewritten in Rust.
+A high-performance, lightweight game clipper for Linux, written in Rust.
 
 ## Features
 - **Near Zero Performance Impact**: Powered by `gpu-screen-recorder`.
@@ -22,4 +19,17 @@ A high-performance, lightweight game clipper for Linux, rewritten in Rust.
 3. Press the hotkey (default: `F10`) to save the last X seconds of gameplay.
 
 ## Installation
-You can build from source or download the pre-compiled binaries from the Releases page.
+The easiest way to install Lapse on any Linux distribution is via the universal installation script:
+
+```bash
+git clone https://github.com/yourusername/lapse.git
+cd lapse
+./install.sh
+```
+
+This will automatically:
+1. Install system dependencies via your package manager.
+2. Install the Rust toolchain (if missing).
+3. Compile the application optimally.
+4. Add lapse to your background Autostart applications.
+5. Create an Applications Menu shortcut.
