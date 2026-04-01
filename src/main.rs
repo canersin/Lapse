@@ -12,9 +12,16 @@ use crate::hotkeys::{start_listener, HotkeyEvent};
 use eframe::egui;
 
 fn load_icon() -> (Vec<u8>, u32, u32) {
-    let image = image::load_from_memory(include_bytes!("assets/icon.png")).unwrap().into_rgba8();
+    let mut image = image::load_from_memory(include_bytes!("assets/icon.png")).unwrap().into_rgba8();
     let (width, height) = image.dimensions();
-    (image.into_raw(), width, height)
+    
+    // Crop to square if not square
+    let size = width.min(height);
+    let x = (width - size) / 2;
+    let y = (height - size) / 2;
+    
+    let cropped = image::imageops::crop(&mut image, x, y, size, size).to_image();
+    (cropped.into_raw(), size, size)
 }
 
 fn main() -> anyhow::Result<()> {
