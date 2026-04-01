@@ -12,23 +12,9 @@ use crate::hotkeys::{start_listener, HotkeyEvent};
 use eframe::egui;
 
 fn load_icon() -> (Vec<u8>, u32, u32) {
-    let (width, height) = (32, 32);
-    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
-    for y in 0..height {
-        for x in 0..width {
-            let cx = x as f32 - 16.0;
-            let cy = y as f32 - 16.0;
-            let dist = (cx * cx + cy * cy).sqrt();
-            if dist < 6.0 {
-                rgba.extend_from_slice(&[255, 60, 80, 255]); // Vibrant red dot
-            } else if dist < 12.0 {
-                rgba.extend_from_slice(&[45, 45, 50, 255]); // Dark ring
-            } else {
-                rgba.extend_from_slice(&[0, 0, 0, 0]); // Transparent
-            }
-        }
-    }
-    (rgba, width, height)
+    let image = image::load_from_memory(include_bytes!("assets/icon.png")).unwrap().into_rgba8();
+    let (width, height) = image.dimensions();
+    (image.into_raw(), width, height)
 }
 
 fn main() -> anyhow::Result<()> {
