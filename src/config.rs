@@ -11,9 +11,11 @@ pub struct Config {
     pub replay_seconds: u32,
     pub hotkey_replay: String,
     pub hotkey_record: String,
-    pub audio_source: String,
+    pub audio_output: String,
+    pub audio_input: String,
     pub quality: String,
     pub fps: u32,
+    pub resolution: String,
 }
 
 impl Default for Config {
@@ -25,9 +27,11 @@ impl Default for Config {
             replay_seconds: 60,
             hotkey_replay: "F10".into(),
             hotkey_record: "F9".into(),
-            audio_source: "default_output".into(),
+            audio_output: "default_output".into(),
+            audio_input: "default_input".into(),
             quality: "high".into(),
             fps: 60,
+            resolution: "1920x1080".into(),
         }
     }
 }
