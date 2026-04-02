@@ -33,3 +33,10 @@ This will automatically:
 3. Compile the application optimally.
 4. Add lapse to your background Autostart applications.
 5. Create an Applications Menu shortcut.
+
+## Uninstallation
+If you wish to remove Lapse from your system, simply run:
+```bash
+./uninstall.sh
+```
+This will safely kill background services and remove all associated binaries and shortcuts.
