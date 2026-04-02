@@ -134,6 +134,14 @@ fn run_daemon() -> anyhow::Result<()> {
 }
 
 fn run_gui_client() -> anyhow::Result<()> {
+    // Check if daemon is running. If not, autostart it.
+    if std::os::unix::net::UnixStream::connect("/tmp/lapse.sock").is_err() {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).arg("--daemon").spawn();
+            std::thread::sleep(std::time::Duration::from_millis(200)); // wait for socket to bind
+        }
+    }
+
     let config = Config::load()?;
     let icon_data = {
         let (rgba, width, height) = load_icon();
