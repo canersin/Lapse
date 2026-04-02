@@ -7,11 +7,11 @@ edition = "2024"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
-rdev = "0.5" # Global hotkey listener
-eframe = "0.26" # UI framework (egui wrapper)
+rdev = "0.5" 
+eframe = "0.26" 
 anyhow = "1.0"
 directories = "5.0"
-signal-hook = "0.3" # Handle termination signals
+signal-hook = "0.3" 
 notify-rust = "4.12.0"
 rfd = "0.17.2"
 rodio = "0.22.2"
@@ -22,3 +22,21 @@ gtk = "0.18"
 chrono = "0.4.38"
 open = "5.1"
 egui_extras = { version = "0.26", features = ["all_loaders"] }
+
+[package.metadata.deb]
+maintainer = "Ersin Can Karaca <canersinkaraca@gmail.com>"
+copyright = "2026, Ersin Can Karaca"
+license-file = ["LICENSE", "0"]
+depends = "$auto, gtk3, libwayland-client0"
+assets = [
+    # [Yerel Dosya Yolu, Hedef Sistemdeki Yolu, İzinler]
+    ["target/release/lapse", "usr/bin/lapse", "755"],
+    ["assets/lapse.desktop", "usr/share/applications/lapse.desktop", "644"],
+    
+    # İkon Dosyası (Yeni konumu: src/assets/)
+    ["src/assets/icon.png", "usr/share/pixmaps/lapse.png", "644"],
+    
+    # Ses Dosyası (Yeni konumu: src/assets/)
+    # Genelde uygulama sesleri /usr/share/sounds/altına konur
+    ["src/assets/shutter.ogg", "usr/share/sounds/lapse/shutter.ogg", "644"],
+]
