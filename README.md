@@ -23,7 +23,7 @@ You can install Lapse from the AUR using an AUR helper like `yay` or `paru`:
 
 **Build from source:**
 ```bash
-yay -S lapse-git
+yay -S lapse
 ```
 
 **Pre-compiled binary:**
