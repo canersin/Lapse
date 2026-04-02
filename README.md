@@ -18,9 +18,34 @@ A high-performance, lightweight game clipper for Linux, written in Rust.
 2. Use the GUI to configure your replay buffer and hotkeys.
 3. Press the hotkey (default: `F10`) to save the last X seconds of gameplay.
 
-## Installation
-The easiest way to install Lapse on any Linux distribution is via the universal installation script:
+### AUR (Arch Linux)
+You can install Lapse from the AUR using an AUR helper like `yay` or `paru`:
 
+**Build from source:**
+```bash
+yay -S lapse-git
+```
+
+**Pre-compiled binary:**
+```bash
+yay -S lapse-bin
+```
+
+### Debian / Ubuntu (.deb)
+Download the latest `.deb` package from the [releases](https://github.com/canersin/lapse/releases) page and install it:
+```bash
+sudo apt install ./lapse_0.1.0_amd64.deb
+```
+
+### AppImage (Universal)
+Download the `.AppImage` from the [releases](https://github.com/canersin/lapse/releases) page, make it executable, and run it:
+```bash
+chmod +x lapse-x86_64.AppImage
+./lapse-x86_64.AppImage
+```
+
+### Manual Installation
+If you prefer to install manually via the provided script:
 ```bash
 git clone https://github.com/canersin/lapse.git
 cd lapse

@@ -33,10 +33,9 @@ assets = [
     ["target/release/lapse", "usr/bin/lapse", "755"],
     ["assets/lapse.desktop", "usr/share/applications/lapse.desktop", "644"],
     
-    # İkon Dosyası (Yeni konumu: src/assets/)
-    ["src/assets/icon.png", "usr/share/pixmaps/lapse.png", "644"],
+    # İkon Dosyası
+    ["assets/icon.png", "usr/share/pixmaps/lapse.png", "644"],
     
-    # Ses Dosyası (Yeni konumu: src/assets/)
-    # Genelde uygulama sesleri /usr/share/sounds/altına konur
-    ["src/assets/shutter.ogg", "usr/share/sounds/lapse/shutter.ogg", "644"],
+    # Ses Dosyası
+    ["assets/shutter.ogg", "usr/share/sounds/lapse/shutter.ogg", "644"],
 ]

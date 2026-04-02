@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Lapse
-Comment=Native screen recording application in Rust
-Exec=lapse
-Icon=lapse
-Terminal=false
-Type=Application
-Categories=Utility;Video;AudioVideo;
-Keywords=screen;recorder;capture;wayland;x11;
