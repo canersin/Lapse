@@ -137,8 +137,13 @@ fn run_gui_client() -> anyhow::Result<()> {
     // Check if daemon is running. If not, autostart it.
     if std::os::unix::net::UnixStream::connect("/tmp/lapse.sock").is_err() {
         if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new(exe).arg("--daemon").spawn();
-            std::thread::sleep(std::time::Duration::from_millis(200)); // wait for socket to bind
+            let _ = std::process::Command::new(exe)
+                .arg("--daemon")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .stdin(std::process::Stdio::null())
+                .spawn();
+            std::thread::sleep(std::time::Duration::from_millis(500)); // wait for socket to bind
         }
     }
 
