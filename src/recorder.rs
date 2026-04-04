@@ -1,7 +1,7 @@
-use std::process::{Command, Child};
+use crate::config::Config;
 use anyhow::Result;
 use notify_rust::Notification;
-use crate::config::Config;
+use std::process::{Child, Command};
 
 pub struct Recorder {
     process: Option<Child>,
@@ -18,7 +18,11 @@ pub enum RecordingMode {
 
 impl Recorder {
     pub fn new(config: Config) -> Self {
-        Self { process: None, config, mode: RecordingMode::None }
+        Self {
+            process: None,
+            config,
+            mode: RecordingMode::None,
+        }
     }
 
     pub fn is_installed(&self) -> bool {
@@ -35,13 +39,15 @@ impl Recorder {
         }
 
         let mut cmd = Command::new(&self.config.recorder_path);
-        cmd.arg("-w").arg("screen") // capture whole screen
-           .arg("-f").arg(self.config.fps.to_string());
-           
+        cmd.arg("-w")
+            .arg("screen") // capture whole screen
+            .arg("-f")
+            .arg(self.config.fps.to_string());
+
         if self.config.resolution != "Native" {
             cmd.arg("-s").arg(&self.config.resolution);
         }
-           
+
         cmd.arg("-r").arg(self.config.replay_seconds.to_string());
         cmd.arg("-restart-replay-on-save").arg("yes");
         cmd.arg("-c").arg("mp4"); // required container format
@@ -78,18 +84,23 @@ impl Recorder {
         }
 
         let mut cmd = Command::new(&self.config.recorder_path);
-        cmd.arg("-w").arg("screen")
-           .arg("-f").arg(self.config.fps.to_string());
-           
+        cmd.arg("-w")
+            .arg("screen")
+            .arg("-f")
+            .arg(self.config.fps.to_string());
+
         if self.config.resolution != "Native" {
             cmd.arg("-s").arg(&self.config.resolution);
         }
-        
+
         cmd.arg("-c").arg("mp4");
-           
+
         // Generate a continuous record filename
         let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-        let filepath = self.config.save_path.join(format!("lapse_record_{}.mp4", timestamp));
+        let filepath = self
+            .config
+            .save_path
+            .join(format!("lapse_record_{}.mp4", timestamp));
         cmd.arg("-o").arg(&filepath);
 
         let mut audio_args = String::new();
@@ -113,13 +124,13 @@ impl Recorder {
 
         self.process = Some(cmd.spawn()?);
         self.mode = RecordingMode::Continuous;
-        
+
         let _ = Notification::new()
             .summary("Lapse")
             .body("Manual recording started.")
             .icon("media-record")
             .show();
-            
+
         Ok(())
     }
 
@@ -131,7 +142,7 @@ impl Recorder {
         self.mode = RecordingMode::None;
         Ok(())
     }
-    
+
     pub fn current_mode(&self) -> RecordingMode {
         self.mode
     }
@@ -140,12 +151,15 @@ impl Recorder {
         // gpu-screen-recorder saves replay on SIGUSR1
         if let Some(child) = &self.process {
             let pid = child.id();
-            Command::new("kill").arg("-SIGUSR1").arg(pid.to_string()).status()?;
-            
+            Command::new("kill")
+                .arg("-SIGUSR1")
+                .arg(pid.to_string())
+                .status()?;
+
             // Play embedded sound
             std::thread::spawn(|| {
                 if let Ok(handle) = rodio::DeviceSinkBuilder::open_default_sink() {
-                    let cursor = std::io::Cursor::new(include_bytes!("assets/shutter.ogg"));
+                    let cursor = std::io::Cursor::new(include_bytes!("../assets/shutter.ogg"));
                     if let Ok(decoder) = rodio::Decoder::new(cursor) {
                         let player = rodio::Player::connect_new(&handle.mixer());
                         player.append(decoder);

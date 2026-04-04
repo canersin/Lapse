@@ -1,35 +1,37 @@
-mod config;
-mod recorder;
-mod hotkeys;
-mod gui;
 mod audio;
+mod config;
+mod gui;
+mod hotkeys;
 mod ipc;
+mod recorder;
 
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc;
+use crate::config::Config;
+use crate::hotkeys::{HotkeyEvent, start_listener};
+use crate::recorder::{Recorder, RecordingMode};
+use eframe::egui;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;
-use crate::config::Config;
-use crate::recorder::{Recorder, RecordingMode};
-use crate::hotkeys::{start_listener, HotkeyEvent};
-use eframe::egui;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 fn load_icon() -> (Vec<u8>, u32, u32) {
-    let mut image = image::load_from_memory(include_bytes!("assets/icon.png")).unwrap().into_rgba8();
+    let mut image = image::load_from_memory(include_bytes!("../assets/icon.png"))
+        .unwrap()
+        .into_rgba8();
     let (width, height) = image.dimensions();
-    
+
     // Crop to square if not square
     let size = width.min(height);
     let x = (width - size) / 2;
     let y = (height - size) / 2;
-    
+
     let cropped = image::imageops::crop(&mut image, x, y, size, size).to_image();
     (cropped.into_raw(), size, size)
 }
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.iter().any(|a| a == "--gui") {
         return run_gui_client();
     }
@@ -41,22 +43,32 @@ fn main() -> anyhow::Result<()> {
 fn run_daemon() -> anyhow::Result<()> {
     let config = Config::load()?;
     let recorder = Arc::new(Mutex::new(Recorder::new(config.clone())));
-    
+
     // Cleanup old socket
     let socket_path = "/tmp/lapse.sock";
     let _ = std::fs::remove_file(socket_path);
-    
+
     // Set up hotkey listener
     let (tx_hotkey, rx_hotkey) = mpsc::channel();
-    start_listener(tx_hotkey, config.hotkey_replay.clone(), config.hotkey_record.clone());
+    start_listener(
+        tx_hotkey,
+        config.hotkey_replay.clone(),
+        config.hotkey_record.clone(),
+    );
 
     // Spawn recorder manager thread
     let recorder_clone = Arc::clone(&recorder);
     std::thread::spawn(move || {
-        if let Ok(mut rec) = recorder_clone.lock() { let _ = rec.start_replay(); }
+        if let Ok(mut rec) = recorder_clone.lock() {
+            let _ = rec.start_replay();
+        }
         while let Ok(event) = rx_hotkey.recv() {
             match event {
-                HotkeyEvent::SaveReplay => { if let Ok(rec) = recorder_clone.lock() { let _ = rec.save_replay(); } }
+                HotkeyEvent::SaveReplay => {
+                    if let Ok(rec) = recorder_clone.lock() {
+                        let _ = rec.save_replay();
+                    }
+                }
                 _ => {}
             }
         }
@@ -82,14 +94,45 @@ fn run_daemon() -> anyhow::Result<()> {
                                             mode: format!("{:?}", rec.current_mode()),
                                             is_installed: rec.is_installed(),
                                         })
-                                    } else { ipc::Response::Error("Lock failed".into()) }
+                                    } else {
+                                        ipc::Response::Error("Lock failed".into())
+                                    }
                                 }
-                                ipc::Command::StartReplay => { if let Ok(mut rec) = recorder.lock() { let _ = rec.start_replay(); ipc::Response::Ok } else { ipc::Response::Error("Lock failed".into()) } }
-                                ipc::Command::SaveReplay => { if let Ok(rec) = recorder.lock() { let _ = rec.save_replay(); ipc::Response::Ok } else { ipc::Response::Error("Lock failed".into()) } }
-                                ipc::Command::StartRecording => { if let Ok(mut rec) = recorder.lock() { let _ = rec.start_recording(); ipc::Response::Ok } else { ipc::Response::Error("Lock failed".into()) } }
-                                ipc::Command::Stop => { if let Ok(mut rec) = recorder.lock() { let _ = rec.stop(); ipc::Response::Ok } else { ipc::Response::Error("Lock failed".into()) } }
+                                ipc::Command::StartReplay => {
+                                    if let Ok(mut rec) = recorder.lock() {
+                                        let _ = rec.start_replay();
+                                        ipc::Response::Ok
+                                    } else {
+                                        ipc::Response::Error("Lock failed".into())
+                                    }
+                                }
+                                ipc::Command::SaveReplay => {
+                                    if let Ok(rec) = recorder.lock() {
+                                        let _ = rec.save_replay();
+                                        ipc::Response::Ok
+                                    } else {
+                                        ipc::Response::Error("Lock failed".into())
+                                    }
+                                }
+                                ipc::Command::StartRecording => {
+                                    if let Ok(mut rec) = recorder.lock() {
+                                        let _ = rec.start_recording();
+                                        ipc::Response::Ok
+                                    } else {
+                                        ipc::Response::Error("Lock failed".into())
+                                    }
+                                }
+                                ipc::Command::Stop => {
+                                    if let Ok(mut rec) = recorder.lock() {
+                                        let _ = rec.stop();
+                                        ipc::Response::Ok
+                                    } else {
+                                        ipc::Response::Error("Lock failed".into())
+                                    }
+                                }
                             };
-                            let _ = stream.write_all(serde_json::to_string(&response).unwrap().as_bytes());
+                            let _ = stream
+                                .write_all(serde_json::to_string(&response).unwrap().as_bytes());
                         }
                     }
                 });
@@ -100,14 +143,14 @@ fn run_daemon() -> anyhow::Result<()> {
     // Tray Setup logic
     #[cfg(target_os = "linux")]
     let _ = gtk::init().expect("Failed to initialize GTK");
-    
+
     use muda::{Menu, MenuItem, PredefinedMenuItem};
     use tray_icon::TrayIconBuilder;
     let tray_menu = Menu::new();
     let show_i = MenuItem::with_id("show", "Show Lapse", true, None);
     let quit_i = MenuItem::with_id("quit", "Quit Lapse", true, None);
     let _ = tray_menu.append_items(&[&show_i, &PredefinedMenuItem::separator(), &quit_i]);
-    
+
     let (icon_rgba, icon_width, icon_height) = load_icon();
     let _tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
@@ -120,10 +163,14 @@ fn run_daemon() -> anyhow::Result<()> {
     std::thread::spawn(move || {
         while let Ok(event) = rx_tray.recv() {
             if event.id == "quit" {
-                if let Ok(mut rec) = recorder_quit.lock() { let _ = rec.stop(); }
+                if let Ok(mut rec) = recorder_quit.lock() {
+                    let _ = rec.stop();
+                }
                 std::process::exit(0);
             } else if event.id == "show" {
-                let _ = std::process::Command::new(std::env::current_exe().unwrap()).arg("--gui").spawn();
+                let _ = std::process::Command::new(std::env::current_exe().unwrap())
+                    .arg("--gui")
+                    .spawn();
             }
         }
     });
@@ -150,7 +197,11 @@ fn run_gui_client() -> anyhow::Result<()> {
     let config = Config::load()?;
     let icon_data = {
         let (rgba, width, height) = load_icon();
-        Arc::new(eframe::egui::IconData { rgba, width, height })
+        Arc::new(eframe::egui::IconData {
+            rgba,
+            width,
+            height,
+        })
     };
 
     let options = eframe::NativeOptions {
@@ -167,7 +218,7 @@ fn run_gui_client() -> anyhow::Result<()> {
         Box::new(move |cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
             Box::new(gui::LapseApp::new(cc, config))
-        })
-    ).map_err(|e| anyhow::anyhow!("Eframe error: {}", e))
+        }),
+    )
+    .map_err(|e| anyhow::anyhow!("Eframe error: {}", e))
 }
-
