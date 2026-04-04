@@ -27,7 +27,7 @@ egui_extras = { version = "0.26", features = ["all_loaders"] }
 maintainer = "Ersin Can Karaca <canersinkaraca@gmail.com>"
 copyright = "2026, Ersin Can Karaca"
 license-file = ["LICENSE", "0"]
-depends = "$auto, gtk3, libwayland-client0"
+depends = "$auto, gtk3, libwayland-client0, libxdo3"
 assets = [
     # [Yerel Dosya Yolu, Hedef Sistemdeki Yolu, İzinler]
     ["target/release/lapse", "usr/bin/lapse", "755"],
