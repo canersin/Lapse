@@ -4,7 +4,11 @@ runtime-version: '23.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-command: lapse
+command: Lapse
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/lapse/cargo
 finish-args:
   - --share=ipc
   - --socket=x11
@@ -13,13 +17,15 @@ finish-args:
   - --filesystem=home
   - --socket=pulseaudio
   - --talk-name=org.freedesktop.Notifications
+  - --device=dri
 modules:
   - name: lapse
     buildsystem: simple
     build-commands:
-      - cargo build --release
-      - install -Dm755 target/release/Lapse /app/bin/lapse
+      - cargo build --release --offline
+      - install -Dm755 target/release/Lapse /app/bin/Lapse
+      - install -Dm644 assets/lapse.desktop /app/share/applications/com.canersin.Lapse.desktop
+      - install -Dm644 assets/icon.png /app/share/pixmaps/com.canersin.Lapse.png
     sources:
-      - type: git
-        url: https://github.com/canersin/Lapse.git
-        branch: main
+      - type: dir
+        path: .

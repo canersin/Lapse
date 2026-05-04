@@ -1,7 +1,7 @@
 [package]
 name = "Lapse"
 version = "0.1.1"
-edition = "2024"
+edition = "2021"
 authors = ["Ersin Can Karaca <canersinkaraca@gmail.com>"]
 description = "Modern and lightweight game clipper for Linux"
 license = "GPL-3.0-only"
@@ -33,7 +33,7 @@ copyright = "2026, Ersin Can Karaca"
 license-file = ["LICENSE", "0"]
 depends = "$auto, gtk3, libwayland-client0, libappindicator3-1"
 assets = [
-    ["target/release/Lapse", "usr/bin/lapse", "755"],
+    ["target/release/Lapse", "usr/bin/Lapse", "755"],
     ["assets/lapse.desktop", "usr/share/applications/lapse.desktop", "644"],
     ["assets/icon.png", "usr/share/pixmaps/lapse.png", "644"],
     ["assets/shutter.ogg", "usr/share/sounds/lapse/shutter.ogg", "644"],
