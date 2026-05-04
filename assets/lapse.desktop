@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Lapse
 Comment=Native screen recording application in Rust
-Exec=lapse
+Exec=Lapse
 Icon=lapse
 Terminal=false
 Type=Application

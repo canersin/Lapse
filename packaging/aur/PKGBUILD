@@ -27,7 +27,7 @@ build() {
 
 package() {
   cd "$srcdir/Lapse"
-  install -Dm755 "target/release/Lapse" "$pkgdir/usr/bin/lapse"
+  install -Dm755 "target/release/Lapse" "$pkgdir/usr/bin/Lapse"
   install -Dm644 "assets/lapse.desktop" "$pkgdir/usr/share/applications/lapse.desktop"
   install -Dm644 "assets/icon.png" "$pkgdir/usr/share/pixmaps/lapse.png"
   install -Dm644 "assets/shutter.ogg" "$pkgdir/usr/share/sounds/lapse/shutter.ogg"
