@@ -1,3 +1,7 @@
 /target
 *.tar.gz
 lapse-*/
+*.pkg.tar.zst
+src/lapse
+pkg/
+Cargo.lock

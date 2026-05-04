@@ -50,11 +50,17 @@ fn run_daemon() -> anyhow::Result<()> {
 
     // Set up hotkey listener
     let (tx_hotkey, rx_hotkey) = mpsc::channel();
-    start_listener(
+    let _hotkey_context = match start_listener(
         tx_hotkey,
         config.hotkey_replay.clone(),
         config.hotkey_record.clone(),
-    );
+    ) {
+        Ok(ctx) => Some(ctx),
+        Err(e) => {
+            eprintln!("Failed to start hotkey listener: {}", e);
+            None
+        }
+    };
 
     // Spawn recorder manager thread
     let recorder_clone = Arc::clone(&recorder);

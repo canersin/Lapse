@@ -1,13 +1,13 @@
-# Building Vice-RS
+# Building Lapse
 
-Vice-RS can be built for both `glibc` (dynamic) and `musl` (static) targets.
+Lapse can be built for both `glibc` (dynamic) and `musl` (static) targets.
 
 ## Building for glibc (Default)
 To build for your current Linux distribution:
 ```bash
 cargo build --release
 ```
-The binary will be located at `target/release/vice-rs`.
+The binary will be located at `target/release/Lapse`.
 
 ## Building for musl (Static Linking)
 To create a fully static binary that works on any Linux distribution (including Alpine):
@@ -25,7 +25,4 @@ To create a fully static binary that works on any Linux distribution (including 
     ```bash
     cargo build --release --target x86_64-unknown-linux-musl
     ```
-The binary will be located at `target/x86_64-unknown-linux-musl/release/vice-rs`.
-
-## GitHub Actions (Optional)
-You can automate this by adding a `.github/workflows/release.yml` file to your repository. This will automatically build and upload binaries whenever you push a tag.
+The binary will be located at `target/x86_64-unknown-linux-musl/release/Lapse`.

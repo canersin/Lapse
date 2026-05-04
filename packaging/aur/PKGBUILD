@@ -6,7 +6,7 @@ pkgdesc="Native screen recording application in Rust for Wayland/X11"
 arch=('x86_64')
 url="https://github.com/canersin/lapse"
 license=('custom')
-depends=('gtk3' 'wayland')
+depends=('gtk3' 'wayland' 'gpu-screen-recorder')
 makedepends=('cargo' 'git')
 source=("git+https://github.com/canersin/lapse.git")
 md5sums=('SKIP')
@@ -21,7 +21,7 @@ build() {
   cd "$srcdir/lapse"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  cargo build --frozen --release --all-features
+  cargo build --release
 }
 
 package() {
@@ -31,4 +31,10 @@ package() {
   install -Dm644 "assets/icon.png" "$pkgdir/usr/share/pixmaps/lapse.png"
   install -Dm644 "assets/shutter.ogg" "$pkgdir/usr/share/sounds/lapse/shutter.ogg"
   install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/${pkgname}/LICENSE"
+  
+  # Install init services
+  install -Dm644 "packaging/init/systemd/lapse.service" "$pkgdir/usr/lib/systemd/user/lapse.service"
+  install -Dm644 "packaging/init/xdg/lapse-daemon.desktop" "$pkgdir/etc/xdg/autostart/lapse-daemon.desktop"
+  install -Dm644 "packaging/init/dinit/lapse" "$pkgdir/usr/share/lapse/init/dinit/lapse"
+  install -Dm755 "packaging/init/runit/lapse/run" "$pkgdir/usr/share/lapse/init/runit/lapse/run"
 }
