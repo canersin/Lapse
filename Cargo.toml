@@ -1,7 +1,11 @@
 [package]
 name = "lapse"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
+authors = ["Ersin Can Karaca <canersinkaraca@gmail.com>"]
+description = "Modern and lightweight game clipper for Linux"
+license = "GPL-3.0-only"
+repository = "https://github.com/canersin/lapse"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -27,15 +31,13 @@ egui_extras = { version = "0.26", features = ["all_loaders"] }
 maintainer = "Ersin Can Karaca <canersinkaraca@gmail.com>"
 copyright = "2026, Ersin Can Karaca"
 license-file = ["LICENSE", "0"]
-depends = "$auto, gtk3, libwayland-client0"
+depends = "$auto, gtk3, libwayland-client0, libappindicator3-1"
 assets = [
-    # [Yerel Dosya Yolu, Hedef Sistemdeki Yolu, İzinler]
     ["target/release/lapse", "usr/bin/lapse", "755"],
     ["assets/lapse.desktop", "usr/share/applications/lapse.desktop", "644"],
-    
-    # İkon Dosyası
     ["assets/icon.png", "usr/share/pixmaps/lapse.png", "644"],
-    
-    # Ses Dosyası
     ["assets/shutter.ogg", "usr/share/sounds/lapse/shutter.ogg", "644"],
 ]
+[package.metadata.appimage]
+assets = ["assets/icon.png", "assets/shutter.ogg", "assets/lapse.desktop"]
+icon = "assets/icon.png"

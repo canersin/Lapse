@@ -6,45 +6,30 @@ pub struct AudioDevice {
     pub description: String,
 }
 
-pub fn get_audio_devices(is_sink: bool) -> Vec<AudioDevice> {
-    let arg = if is_sink { "sinks" } else { "sources" };
-    
-    let output = match Command::new("pactl").arg("list").arg(arg).output() {
+pub fn get_audio_devices() -> (Vec<AudioDevice>, Vec<AudioDevice>) {
+    let output = match Command::new("gpu-screen-recorder").arg("--list-audio-devices").output() {
         Ok(out) => out,
-        Err(_) => return vec![], // pactl not found or error
+        Err(_) => return (vec![], vec![]),
     };
     
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut devices = Vec::new();
-    
-    let mut current_name = String::new();
-    let mut current_desc = String::new();
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
     
     for line in stdout.lines() {
-        let trimmed = line.trim();
-        if line.starts_with("Sink #") || line.starts_with("Source #") {
-            if !current_name.is_empty() {
-                devices.push(AudioDevice {
-                    name: current_name.clone(),
-                    description: if current_desc.is_empty() { current_name.clone() } else { current_desc.clone() },
-                });
-                current_name.clear();
-                current_desc.clear();
+        let parts: Vec<&str> = line.splitn(2, '|').collect();
+        if parts.len() == 2 {
+            let name = parts[0].to_string();
+            let description = parts[1].to_string();
+            let device = AudioDevice { name: name.clone(), description };
+            
+            if name.contains("input") {
+                inputs.push(device);
+            } else if name.contains("output") {
+                outputs.push(device);
             }
         }
-        if trimmed.starts_with("Name: ") {
-            current_name = trimmed.replace("Name: ", "").trim().to_string();
-        } else if trimmed.starts_with("Description: ") {
-            current_desc = trimmed.replace("Description: ", "").trim().to_string();
-        }
     }
     
-    if !current_name.is_empty() {
-        devices.push(AudioDevice {
-            name: current_name.clone(),
-            description: if current_desc.is_empty() { current_name } else { current_desc },
-        });
-    }
-    
-    devices
+    (outputs, inputs)
 }

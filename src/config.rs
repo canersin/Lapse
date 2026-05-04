@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use anyhow::Result;
 use directories::ProjectDirs;
+use global_hotkey::hotkey::Code;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -9,13 +10,17 @@ pub struct Config {
     pub save_path: PathBuf,
     pub recorder_path: String,
     pub replay_seconds: u32,
-    pub hotkey_replay: String,
-    pub hotkey_record: String,
+    pub hotkey_replay: Code,
+    pub hotkey_replay_mod: u32, // Bitflags as u32 for easy serialization
+    pub hotkey_record: Code,
+    pub hotkey_record_mod: u32,
     pub audio_output: String,
     pub audio_input: String,
     pub quality: String,
     pub fps: u32,
     pub resolution: String,
+    pub monitor: String,
+    pub gpu: String,
 }
 
 impl Default for Config {
@@ -25,13 +30,17 @@ impl Default for Config {
             save_path: PathBuf::from(home).join("Videos/Lapse"),
             recorder_path: "gpu-screen-recorder".into(),
             replay_seconds: 60,
-            hotkey_replay: "F10".into(),
-            hotkey_record: "F9".into(),
+            hotkey_replay: Code::F10,
+            hotkey_replay_mod: 0,
+            hotkey_record: Code::F9,
+            hotkey_record_mod: 0,
             audio_output: "default_output".into(),
-            audio_input: "default_input".into(),
+            audio_input: "None".into(),
             quality: "high".into(),
             fps: 60,
             resolution: "1920x1080".into(),
+            monitor: "screen".into(),
+            gpu: "Auto".into(),
         }
     }
 }

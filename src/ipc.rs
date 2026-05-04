@@ -7,12 +7,13 @@ pub enum Command {
     SaveReplay,
     StartRecording,
     Stop,
+    ReloadConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StatusResponse {
     pub recording: bool,
-    pub mode: String, // "None", "Replay", "Recording"
+    pub mode: String,
     pub is_installed: bool,
 }
 

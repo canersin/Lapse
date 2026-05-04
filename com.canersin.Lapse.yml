@@ -1,0 +1,25 @@
+id: com.canersin.Lapse
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lapse
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=all
+  - --filesystem=home
+  - --socket=pulseaudio
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: lapse
+    buildsystem: simple
+    build-commands:
+      - cargo build --release
+      - install -Dm755 target/release/Lapse /app/bin/lapse
+    sources:
+      - type: git
+        url: https://github.com/canersin/Lapse.git
+        branch: main

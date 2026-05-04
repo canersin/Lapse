@@ -1,6 +1,6 @@
 # Maintainer: Ersin Can Karaca <[canersinkaraca@gmail.com]>
 pkgname=lapse-git
-pkgver=v0.1.0.r9.gff32b54
+pkgver=v0.1.1.r0.gab74ca5
 pkgrel=1
 pkgdesc="Native screen recording application in Rust for Wayland/X11"
 arch=('x86_64')

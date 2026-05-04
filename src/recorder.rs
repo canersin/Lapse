@@ -25,6 +25,10 @@ impl Recorder {
         }
     }
 
+    pub fn update_config(&mut self, config: Config) {
+        self.config = config;
+    }
+
     pub fn is_installed(&self) -> bool {
         Command::new("which")
             .arg(&self.config.recorder_path)
@@ -35,12 +39,16 @@ impl Recorder {
 
     pub fn start_replay(&mut self) -> Result<()> {
         if self.process.is_some() {
-            return Ok(()); // already running
+            return Ok(());
         }
 
         let mut cmd = Command::new(&self.config.recorder_path);
+        if self.config.gpu != "Auto" {
+            cmd.env("DRI_PRIME", &self.config.gpu);
+        }
+        
         cmd.arg("-w")
-            .arg("screen") // capture whole screen
+            .arg(&self.config.monitor)
             .arg("-f")
             .arg(self.config.fps.to_string());
 
@@ -50,7 +58,7 @@ impl Recorder {
 
         cmd.arg("-r").arg(self.config.replay_seconds.to_string());
         cmd.arg("-restart-replay-on-save").arg("yes");
-        cmd.arg("-c").arg("mp4"); // required container format
+        cmd.arg("-c").arg("mp4");
         cmd.arg("-o").arg(&self.config.save_path);
 
         let mut audio_args = String::new();
@@ -68,7 +76,7 @@ impl Recorder {
             cmd.arg("-a").arg(&audio_args);
         }
 
-        // Ensure save path exists
+
         if !self.config.save_path.exists() {
             std::fs::create_dir_all(&self.config.save_path)?;
         }
@@ -84,8 +92,12 @@ impl Recorder {
         }
 
         let mut cmd = Command::new(&self.config.recorder_path);
+        if self.config.gpu != "Auto" {
+            cmd.env("DRI_PRIME", &self.config.gpu);
+        }
+        
         cmd.arg("-w")
-            .arg("screen")
+            .arg(&self.config.monitor)
             .arg("-f")
             .arg(self.config.fps.to_string());
 
@@ -95,7 +107,7 @@ impl Recorder {
 
         cmd.arg("-c").arg("mp4");
 
-        // Generate a continuous record filename
+
         let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
         let filepath = self
             .config
@@ -148,7 +160,7 @@ impl Recorder {
     }
 
     pub fn save_replay(&self) -> Result<()> {
-        // gpu-screen-recorder saves replay on SIGUSR1
+
         if let Some(child) = &self.process {
             let pid = child.id();
             Command::new("kill")
@@ -156,7 +168,7 @@ impl Recorder {
                 .arg(pid.to_string())
                 .status()?;
 
-            // Play embedded sound
+
             std::thread::spawn(|| {
                 if let Ok(handle) = rodio::DeviceSinkBuilder::open_default_sink() {
                     let cursor = std::io::Cursor::new(include_bytes!("../assets/shutter.ogg"));
@@ -168,7 +180,7 @@ impl Recorder {
                 }
             });
 
-            // Notify user
+
             let _ = Notification::new()
                 .summary("Lapse")
                 .body(&format!("Replay saved to {:?}", self.config.save_path))

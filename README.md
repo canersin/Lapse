@@ -1,47 +1,36 @@
 # Lapse
 
-A high-performance, lightweight game clipper for Linux, written in Rust.
+A modern, high-performance, lightweight game clipper for Linux, written in Rust.
 
 ## Features
-- **Near Zero Performance Impact**: Powered by `gpu-screen-recorder`.
-- **Native GUI**: Built with `egui`, no HTML/JS/Python required.
-- **Global Hotkeys**: Save replays instantly with a single keypress.
-- **Highly Portable**: Static binaries available (musl support).
-- **Lightweight**: Minimal disk and memory footprint.
+- **Modern Interface**: Premium, dark-mode Medal.tv-like UI built natively with `egui`.
+- **Near Zero Performance Impact**: Hardware encoding powered by `gpu-screen-recorder`.
+- **Hardware Selection**: Dynamically select which GPU handles your encoding, your microphone, and your speaker output right from the GUI.
+- **Global Hotkeys**: Save replays or start manual recordings instantly with a single keypress.
+- **Highly Portable**: Supports X11 and Wayland effortlessly.
+- **Lightweight**: Minimal disk and memory footprint with a system tray background daemon.
 
 ## Requirements
 - Linux (Wayland or X11)
 - `gpu-screen-recorder` installed on your system.
 
 ## Usage
-1. Launch `lapse`.
-2. Use the GUI to configure your replay buffer and hotkeys.
+1. Launch `lapse --gui`.
+2. Use the GUI to configure your replay buffer, GPU encoding, hardware devices, and hotkeys.
 3. Press the hotkey (default: `F10`) to save the last X seconds of gameplay.
 
-### AUR (Arch Linux)
-You can install Lapse from the AUR using an AUR helper like `yay` or `paru`:
+### Arch Linux (AUR)
+You can install Lapse from the AUR using an AUR helper like `yay` or `paru`.
 
 **Build from source:**
 ```bash
-yay -S lapse
-```
-
-**Pre-compiled binary:**
-```bash
-yay -S lapse-bin
+yay -S lapse-git
 ```
 
 ### Debian / Ubuntu (.deb)
-Download the latest `.deb` package from the [releases](https://github.com/canersin/lapse/releases) page and install it:
+To build a .deb package yourself, ensure `cargo-deb` is installed and run:
 ```bash
-sudo apt install ./lapse_0.1.0_amd64.deb
-```
-
-### AppImage (Universal)
-Download the `.AppImage` from the [releases](https://github.com/canersin/lapse/releases) page, make it executable, and run it:
-```bash
-chmod +x lapse-x86_64.AppImage
-./lapse-x86_64.AppImage
+cargo deb
 ```
 
 ### Manual Installation
@@ -64,4 +53,5 @@ If you wish to remove Lapse from your system, simply run:
 ```bash
 ./uninstall.sh
 ```
-This will safely kill background services and remove all associated binaries and shortcuts.
+This will safely kill background services and remove all associated binaries, shortcuts, and configurations, without touching your saved video clips.
+

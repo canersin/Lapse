@@ -4,9 +4,13 @@ mod gui;
 mod hotkeys;
 mod ipc;
 mod recorder;
+mod monitor;
+mod gpu;
 
 use crate::config::Config;
-use crate::hotkeys::{HotkeyEvent, start_listener};
+use crate::hotkeys::HotkeyEvent;
+use global_hotkey::hotkey::{HotKey, Modifiers};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use crate::recorder::{Recorder, RecordingMode};
 use eframe::egui;
 use std::io::{Read, Write};
@@ -20,7 +24,7 @@ fn load_icon() -> (Vec<u8>, u32, u32) {
         .into_rgba8();
     let (width, height) = image.dimensions();
 
-    // Crop to square if not square
+
     let size = width.min(height);
     let x = (width - size) / 2;
     let y = (height - size) / 2;
@@ -36,7 +40,7 @@ fn main() -> anyhow::Result<()> {
         return run_gui_client();
     }
 
-    // Default to Daemon mode
+
     run_daemon()
 }
 
@@ -44,25 +48,59 @@ fn run_daemon() -> anyhow::Result<()> {
     let config = Config::load()?;
     let recorder = Arc::new(Mutex::new(Recorder::new(config.clone())));
 
-    // Cleanup old socket
+
     let socket_path = "/tmp/lapse.sock";
     let _ = std::fs::remove_file(socket_path);
 
-    // Set up hotkey listener
+
+    let manager = GlobalHotKeyManager::new().unwrap();
     let (tx_hotkey, rx_hotkey) = mpsc::channel();
-    let _hotkey_context = match start_listener(
-        tx_hotkey,
-        config.hotkey_replay.clone(),
-        config.hotkey_record.clone(),
-    ) {
-        Ok(ctx) => Some(ctx),
-        Err(e) => {
-            eprintln!("Failed to start hotkey listener: {}", e);
-            None
+    
+    // Track current hotkey IDs so the persistent loop knows what's what
+    let hotkey_ids = Arc::new(Mutex::new((0u32, 0u32)));
+    let hotkey_ids_clone = Arc::clone(&hotkey_ids);
+    let tx_hotkey_clone = tx_hotkey.clone();
+
+    // PERSISTENT EVENT LOOP: Runs once, lives forever
+    std::thread::spawn(move || {
+        let receiver = GlobalHotKeyEvent::receiver();
+        while let Ok(event) = receiver.recv() {
+            let ids = hotkey_ids_clone.lock().unwrap();
+            if event.id == ids.0 {
+                let _ = tx_hotkey_clone.send(HotkeyEvent::SaveReplay);
+            } else if event.id == ids.1 {
+                let _ = tx_hotkey_clone.send(HotkeyEvent::ToggleRecord);
+            }
+        }
+    });
+
+    // Initial registration
+    let register = |cfg: &Config| {
+        let r_hk = HotKey::new(get_mod(cfg.hotkey_replay_mod), cfg.hotkey_replay);
+        let rec_hk = HotKey::new(get_mod(cfg.hotkey_record_mod), cfg.hotkey_record);
+        
+        let _ = manager.unregister_all(&[]);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let _ = manager.register(r_hk);
+        let _ = manager.register(rec_hk);
+        
+        if let Ok(mut ids) = hotkey_ids.lock() {
+            *ids = (r_hk.id(), rec_hk.id());
         }
     };
 
-    // Spawn recorder manager thread
+    fn get_mod(bits: u32) -> Option<Modifiers> {
+        let mut m = Modifiers::empty();
+        if bits & (1 << 0) != 0 { m |= Modifiers::ALT; }
+        if bits & (1 << 1) != 0 { m |= Modifiers::CONTROL; }
+        if bits & (1 << 2) != 0 { m |= Modifiers::SHIFT; }
+        if bits & (1 << 3) != 0 { m |= Modifiers::SUPER; }
+        if m.is_empty() { None } else { Some(m) }
+    }
+
+    register(&config);
+
+
     let recorder_clone = Arc::clone(&recorder);
     std::thread::spawn(move || {
         if let Ok(mut rec) = recorder_clone.lock() {
@@ -80,13 +118,18 @@ fn run_daemon() -> anyhow::Result<()> {
         }
     });
 
-    // Spawn IPC Listener thread
+
     let recorder_ipc = Arc::clone(&recorder);
+    let manager_ipc = Arc::new(manager);
+    let tx_hotkey_ipc = tx_hotkey.clone();
+    let hotkey_ids_ipc_root = Arc::clone(&hotkey_ids);
     let listener = UnixListener::bind(socket_path)?;
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             if let Ok(mut stream) = stream {
                 let recorder = Arc::clone(&recorder_ipc);
+                let manager = Arc::clone(&manager_ipc);
+                let hotkey_ids_ipc = Arc::clone(&hotkey_ids_ipc_root);
                 std::thread::spawn(move || {
                     let mut buffer = [0; 1024];
                     if let Ok(n) = stream.read(&mut buffer) {
@@ -136,6 +179,30 @@ fn run_daemon() -> anyhow::Result<()> {
                                         ipc::Response::Error("Lock failed".into())
                                     }
                                 }
+                                ipc::Command::ReloadConfig => {
+                                    if let Ok(new_config) = Config::load() {
+                                        if let Ok(mut rec) = recorder.lock() {
+                                            rec.update_config(new_config.clone());
+                                        }
+                                        
+                                        // Update hotkeys on the same manager
+                                        let r_hk = HotKey::new(get_mod(new_config.hotkey_replay_mod), new_config.hotkey_replay);
+                                        let rec_hk = HotKey::new(get_mod(new_config.hotkey_record_mod), new_config.hotkey_record);
+                                        
+                                        let _ = manager.unregister_all(&[]);
+                                        std::thread::sleep(std::time::Duration::from_millis(50));
+                                        let _ = manager.register(r_hk);
+                                        let _ = manager.register(rec_hk);
+                                        
+                                        if let Ok(mut ids) = hotkey_ids_ipc.lock() {
+                                            *ids = (r_hk.id(), rec_hk.id());
+                                        }
+
+                                        ipc::Response::Ok
+                                    } else {
+                                        ipc::Response::Error("Failed to load config".into())
+                                    }
+                                }
                             };
                             let _ = stream
                                 .write_all(serde_json::to_string(&response).unwrap().as_bytes());
@@ -146,7 +213,7 @@ fn run_daemon() -> anyhow::Result<()> {
         }
     });
 
-    // Tray Setup logic
+
     #[cfg(target_os = "linux")]
     let _ = gtk::init().expect("Failed to initialize GTK");
 
@@ -187,7 +254,7 @@ fn run_daemon() -> anyhow::Result<()> {
 }
 
 fn run_gui_client() -> anyhow::Result<()> {
-    // Check if daemon is running. If not, autostart it.
+
     if std::os::unix::net::UnixStream::connect("/tmp/lapse.sock").is_err() {
         if let Ok(exe) = std::env::current_exe() {
             let _ = std::process::Command::new(exe)
@@ -196,7 +263,7 @@ fn run_gui_client() -> anyhow::Result<()> {
                 .stderr(std::process::Stdio::null())
                 .stdin(std::process::Stdio::null())
                 .spawn();
-            std::thread::sleep(std::time::Duration::from_millis(500)); // wait for socket to bind
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 
