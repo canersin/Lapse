@@ -34,6 +34,11 @@ cargo deb
 ```
 
 ### Manual Installation
+**Note for Developers:** If you are compiling Lapse manually from source, you must install the `libxdo` development headers for the global hotkey feature to compile:
+- **Ubuntu/Debian/Linux Mint:** `sudo apt install libxdo-dev`
+- **Arch Linux/Manjaro:** `sudo pacman -S xdotool`
+- **Fedora:** `sudo dnf install libxdo-devel`
+
 If you prefer to install manually via the provided script:
 ```bash
 git clone https://github.com/canersin/lapse.git

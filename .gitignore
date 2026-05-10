@@ -5,3 +5,6 @@ lapse-*/
 src/lapse
 pkg/
 Cargo.lock
+.vscode/
+*.sock
+vendor/
