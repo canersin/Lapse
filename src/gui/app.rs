@@ -30,6 +30,7 @@ pub struct LapseApp {
     pub last_status: Option<ipc::StatusResponse>,
     pub last_status_poll: Instant,
     pub binding_hotkey: bool, 
+    pub player_state: Option<crate::gui::player::PlayerState>,
 }
 
 impl LapseApp {
@@ -60,6 +61,7 @@ impl LapseApp {
             last_status: None,
             last_status_poll: Instant::now().checked_sub(Duration::from_secs(10)).unwrap(),
             binding_hotkey: false,
+            player_state: None,
         }
     }
     
@@ -90,9 +92,13 @@ impl eframe::App for LapseApp {
         sidebar::render(self, ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            match self.active_tab {
-                ActiveTab::Library => library::render(self, ui),
-                ActiveTab::Settings => settings::render(self, ui),
+            if self.player_state.is_some() {
+                crate::gui::player::render(self, ui, ctx);
+            } else {
+                match self.active_tab {
+                    ActiveTab::Library => library::render(self, ui),
+                    ActiveTab::Settings => settings::render(self, ui),
+                }
             }
         });
     }

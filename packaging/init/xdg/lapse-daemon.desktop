@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Lapse Daemon
-Comment=Background daemon for Lapse Screen Recorder
-Exec=/usr/bin/lapse --daemon
-Icon=lapse
-Terminal=false
-NoDisplay=true
-X-GNOME-Autostart-enabled=true

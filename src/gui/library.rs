@@ -37,7 +37,7 @@ pub fn render(app: &mut LapseApp, ui: &mut egui::Ui) {
                         if clip.thumb_path.exists() {
                             let response = ui.add(egui::Image::new(format!("file://{}", clip.thumb_path.display())).fit_to_exact_size(Vec2::new(item_width, item_width * 9.0 / 16.0)).rounding(8.0).sense(egui::Sense::click()));
                             if response.clicked() {
-                                let _ = open::that(&clip.path);
+                                app.player_state = crate::gui::player::PlayerState::new(clip.path.clone());
                             }
                             if response.hovered() {
                                 response.on_hover_cursor(egui::CursorIcon::PointingHand);

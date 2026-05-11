@@ -6,5 +6,15 @@ src/lapse
 pkg/
 Cargo.lock
 .vscode/
+.cargo/
+packaging/
 *.sock
 vendor/
+.flatpak-builder/
+build-dir/
+*.mp4
+*.wav
+*.ogg
+/scratch
+/scratch.rs
+test_*.rs
