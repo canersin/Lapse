@@ -5,6 +5,12 @@ CARGOFLAGS  ?= --release
 INSTALL     ?= install
 TARGET_DIR  ?= target/release
 
+# rustup's musl target links statically by default, and a static binary can't
+# load the graphics libraries the window needs.
+ifneq ($(findstring musl,$(shell rustc -vV 2>/dev/null | sed -n 's/^host: //p')),)
+  export RUSTFLAGS += -C target-feature=-crt-static
+endif
+
 ifeq ($(origin PREFIX), undefined)
   ifneq ($(strip $(DESTDIR)),)
     PREFIX := /usr
