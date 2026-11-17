@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prints the Gentoo ebuild for a version, with the crate list from Cargo.lock.
 
-    python3 packaging/gentoo/ebuild.py 2.1.0 > lapse-2.1.0.ebuild
+    python3 packaging/gentoo/ebuild.py 2.1.1 > lapse-2.1.1.ebuild
 
 packaging/build-release.sh gentoo writes it to dist/gentoo/media-video/lapse/.
 """
@@ -49,7 +49,7 @@ RDEPEND="
 \t${{DEPEND}}
 \tmedia-libs/libglvnd
 \tdev-libs/wayland
-\tx11-libs/libxkbcommon
+\tx11-libs/libxkbcommon[X]
 \tx11-libs/libX11
 \tx11-libs/libXcursor
 \tx11-libs/libXrandr

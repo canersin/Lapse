@@ -95,7 +95,6 @@ pub struct Config {
     pub video_codec: String,
     pub record_only_game: bool,
     pub autostart: bool,
-    pub init_system: String,
     pub check_updates: bool,
 }
 
@@ -302,7 +301,6 @@ impl Default for Config {
             video_codec: "auto".into(),
             record_only_game: false,
             autostart: true,
-            init_system: "auto".into(),
             check_updates: true,
         }
     }
@@ -364,12 +362,12 @@ impl Config {
         let tmp = config_path.with_extension("toml.tmp");
         std::fs::write(&tmp, content)?;
         std::fs::rename(&tmp, &config_path)?;
-        Self::sync_autostart(self.autostart, &self.init_system);
+        Self::sync_autostart(self.autostart);
         Ok(())
     }
 
-    pub fn sync_autostart(enable: bool, preferred_init: &str) {
-        crate::init_system::sync_autostart(enable, preferred_init);
+    pub fn sync_autostart(enable: bool) {
+        crate::init_system::sync_autostart(enable);
     }
 
     pub fn get_config_path() -> Result<PathBuf> {

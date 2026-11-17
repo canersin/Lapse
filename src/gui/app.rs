@@ -295,7 +295,7 @@ impl eframe::App for LapseApp {
         if self.state.active_tab != previous_tab {
             if previous_tab == NavigationTab::Settings {
                 let _ = self.config.save();
-                Config::sync_autostart(self.config.autostart, &self.config.init_system);
+                Config::sync_autostart(self.config.autostart);
                 dispatch_ipc(ipc::Command::ReloadConfig);
             }
             if let Some(mut player) = self.player_state.take() {

@@ -28,7 +28,7 @@ mod utils;
 
 fn main() -> anyhow::Result<()> {
     if let Ok(cfg) = config::Config::load() {
-        init_system::sync_autostart(cfg.autostart, &cfg.init_system);
+        init_system::sync_autostart(cfg.autostart);
     }
 
     let args: Vec<String> = std::env::args().skip(1).collect();
