@@ -9,7 +9,6 @@ use crate::hotkeys::HotkeyEvent;
 use crate::hardware::audio::AudioDevice;
 use crate::hardware::gpu::GpuDevice;
 use crate::hardware::monitor::MonitorDevice;
-use crate::init_system::{detect_host_init, InitType};
 use crate::ipc;
 
 use crate::gui::components::button::{m3_filled_button_sized, m3_outlined_button};
@@ -227,7 +226,7 @@ pub fn render_settings(
         if now - changed_at > 0.8 && !pointer_down {
             ui.data_mut(|d| d.remove::<f64>(pending_id));
             let _ = config.save();
-            Config::sync_autostart(config.autostart, &config.init_system);
+            Config::sync_autostart(config.autostart);
             on_command(ipc::Command::ReloadConfig);
             *status_banner = Some((
                 t("Settings saved & applied").into(),
@@ -835,66 +834,23 @@ fn render_services_tab(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Confi
         ui,
         theme,
         Some(IconKind::Gear),
-        t("Daemon Autostart & Init System Services"),
-        Some(t("Run Lapse automatically in background on system boot")),
+        t("Autostart"),
+        Some(t("Run Lapse in the background when you log in")),
         |ui| {
             m3_setting_row(
                 ui,
                 theme,
-                t("Launch on System Startup"),
-                t("Starts background replay daemon on boot / desktop login"),
+                t("Launch on Login"),
+                t("Starts the replay buffer when your desktop session starts"),
                 |ui| {
                     let mut autostart = config.autostart;
                     if m3_switch(ui, theme, &mut autostart).changed() {
                         config.autostart = autostart;
-                        Config::sync_autostart(autostart, &config.init_system);
+                        Config::sync_autostart(autostart);
                     }
                 },
             );
 
-            ui.separator();
-
-            m3_setting_row(
-                ui,
-                theme,
-                t("Service / Init System"),
-                t("Target init system for startup (systemd, runit, dinit, openrc, xdg)"),
-                |ui| {
-                    ui.horizontal(|ui| {
-                        let detected = detect_host_init();
-                        m3_badge(
-                            ui,
-                            theme,
-                            &format!("Detected: {}", detected.display_name()),
-                            Some(theme.secondary),
-                        );
-
-                        let current_init = InitType::from_str(&config.init_system);
-                        let mut selected = current_init;
-
-                        m3_dropdown(ui, theme, "init_system_selector", selected.display_name(), 320.0, |ui| {
-                                for opt in [
-                                    InitType::Auto,
-                                    InitType::Systemd,
-                                    InitType::Runit,
-                                    InitType::Dinit,
-                                    InitType::OpenRC,
-                                    InitType::SysVinit,
-                                    InitType::XdgDesktop,
-                                ] {
-                                    ui.selectable_value(&mut selected, opt, opt.display_name());
-                                }
-                            });
-
-                        if selected != current_init {
-                            config.init_system = selected.as_str().to_string();
-                            if config.autostart {
-                                Config::sync_autostart(true, &config.init_system);
-                            }
-                        }
-                    });
-                },
-            );
         },
     );
 }
@@ -1081,7 +1037,7 @@ fn save_and_reload(
     status_banner: &mut Option<(String, std::time::Instant)>,
 ) {
     let _ = config.save();
-    Config::sync_autostart(config.autostart, &config.init_system);
+    Config::sync_autostart(config.autostart);
     on_command(ipc::Command::ReloadConfig);
     *status_banner = Some((
         "Settings successfully applied to engine!".into(),

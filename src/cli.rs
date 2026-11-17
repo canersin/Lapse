@@ -6,7 +6,7 @@ use crate::config::Config;
 use crate::hardware::audio::get_audio_devices;
 use crate::hardware::gpu::get_gpus;
 use crate::hardware::monitor::get_monitors;
-use crate::init_system::{detect_host_init, sync_autostart};
+use crate::init_system::sync_autostart;
 use crate::ipc;
 
 pub fn handle_cli(args: &[String]) -> anyhow::Result<bool> {
@@ -278,11 +278,6 @@ fn handle_status() -> anyhow::Result<bool> {
         );
         println!("  Save Path:     {}", cfg.save_path.display());
         println!(
-            "  Init System:   {} (Config: {})",
-            detect_host_init().display_name(),
-            cfg.init_system
-        );
-        println!(
             "  Autostart:     {}",
             if cfg.autostart { "Enabled" } else { "Disabled" }
         );
@@ -495,13 +490,10 @@ fn handle_doctor() -> anyhow::Result<bool> {
     println!("\x1b[1;35m       LAPSE STARTUP DIAGNOSTICS       \x1b[0m");
     println!("\x1b[1;35m=======================================\x1b[0m");
 
-    let init = detect_host_init();
-    println!("\x1b[1;34m[1/6] Host Init System:\x1b[0m");
-    println!(
-        "  Detected:      \x1b[1;32m{}\x1b[0m ({})",
-        init.display_name(),
-        init.as_str()
-    );
+    println!("\x1b[1;34m[1/6] Desktop Session:\x1b[0m");
+    let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".into());
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_else(|_| "unknown".into());
+    println!("  Session:       {} ({})", session, desktop);
 
     println!("\x1b[1;34m[2/6] GPU Acceleration & Codecs:\x1b[0m");
     let gpus = get_gpus();
@@ -570,7 +562,6 @@ fn handle_doctor() -> anyhow::Result<bool> {
                 "Disabled"
             }
         );
-        println!("  Target Init:   {}", cfg.init_system);
     }
 
     println!("\x1b[1;32mAll diagnostic checks completed successfully.\x1b[0m\n");
@@ -578,10 +569,10 @@ fn handle_doctor() -> anyhow::Result<bool> {
 }
 
 fn handle_uninstall() -> anyhow::Result<bool> {
-    println!("\x1b[1;33mCleanly removing Lapse autostart and background services...\x1b[0m");
-    sync_autostart(false, "auto");
+    println!("\x1b[1;33mRemoving Lapse autostart...\x1b[0m");
+    sync_autostart(false);
     let _ = std::fs::remove_file(ipc::socket_path());
-    println!("\x1b[1;32m[OK]\x1b[0m Removed autostart desktop entry and init service scripts.");
+    println!("\x1b[1;32m[OK]\x1b[0m Removed the autostart entry.");
     println!("Note: Saved clips and configuration were preserved in ~/.config/lapse.");
     Ok(true)
 }

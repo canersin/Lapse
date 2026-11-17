@@ -297,7 +297,6 @@ impl Recorder {
             let d = Config::default();
             c.theme_palette = d.theme_palette;
             c.autostart = d.autostart;
-            c.init_system = d.init_system;
             c.check_updates = d.check_updates;
             c.discord_rpc = d.discord_rpc;
             c.discord_rpc_button = d.discord_rpc_button;

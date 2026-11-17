@@ -335,7 +335,7 @@ Every command talks to the running daemon. Start it first with `lapse start`.
 | `lapse doctor` | Check GPU, audio, init system and tools, and print what is missing |
 | `lapse gpus` | Show the graphics cards and the dual GPU setup |
 | `lapse run -- <command>` | Start a game on the game GPU (see [Dual GPU recording](#dual-gpu-recording)) |
-| `lapse uninstall` | Remove the autostart entry and service files (keeps clips and settings) |
+| `lapse uninstall` | Remove the autostart entry (keeps clips and settings) |
 | `lapse help` | Show this list |
 
 The commands make it easy to bind Lapse in a window manager. For example in
@@ -398,7 +398,7 @@ Settings are grouped in tabs. Changes take effect when you press
 
 ### Services
 
-- **Start on login** and which **init system** sets it up: systemd, runit, dinit, OpenRC, or an XDG autostart entry. **Auto** detects it.
+- **Launch on login**: starts Lapse from your desktop's autostart (`~/.config/autostart/lapse.desktop`), inside the session, so it can reach the screen. Window managers that don't run autostart entries (Hyprland, sway) need `exec lapse --daemon` in their config.
 - **Storage limit**: delete the oldest clips when the folder grows past a size. Off by default. Starred clips are never deleted.
 - **Sharing and privacy**: whether Lapse may fall back to third-party SSH tunnels (localhost.run, serveo.net) when Cloudflare fails.
 - **Discord**:
@@ -552,7 +552,7 @@ and tells you what is missing.
 
 ## Uninstalling
 
-First remove the autostart entry and services:
+First remove the autostart entry:
 
 ```bash
 lapse uninstall
@@ -571,6 +571,9 @@ Then remove the program the same way you installed it:
 | AppImage | Delete the file |
 | `install.sh` | `./uninstall.sh` from the same folder (`sudo` for a system install; `--purge` also deletes settings) |
 | `make install` | `make uninstall` (with `sudo` if you installed with it) |
+
+Moving from `install.sh` to a package? Remove the old copy first. Otherwise the
+menu entry and the `lapse` command keep starting the old one from `~/.local`.
 
 Your clips and settings are kept. Delete `~/Videos/Lapse` and
 `~/.config/lapse` to remove them too.
