@@ -165,6 +165,36 @@ sudo make install          # to /usr/local
 Without `sudo`, `make install` installs to `~/.local` for your user only.
 `make uninstall` removes it again (use the same `sudo` or not as for install).
 
+### musl systems (Alpine, Void musl)
+
+The ready-made packages need glibc, so on musl Lapse is built from source.
+Install the build tools and the libraries the window loads.
+
+Alpine:
+
+```bash
+sudo apk add cargo pkgconf alsa-lib-dev make libxkbcommon-x11 ffmpeg
+```
+
+Void musl:
+
+```bash
+sudo xbps-install cargo pkg-config alsa-lib-devel make libxkbcommon-x11 ffmpeg gpu-screen-recorder
+```
+
+Then build and install it for your user:
+
+```bash
+git clone https://github.com/canersin/Lapse.git
+cd Lapse
+./install.sh
+```
+
+Rust from your distribution or from [rustup](https://rustup.rs) both work.
+Alpine doesn't package gpu-screen-recorder; build it from
+[its source](https://git.dec05eba.com/gpu-screen-recorder/about/), or use the
+Flatpak, which includes it.
+
 ### NixOS and Nix
 
 Run it once without installing:
@@ -226,7 +256,7 @@ chmod +x Lapse-<version>-x86_64.AppImage
 It starts the recording service and opens the window. It runs on any
 distribution with glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and later);
 gpu-screen-recorder and ffmpeg must be installed on the system. On musl systems
-(Alpine, Void musl) use the Flatpak.
+(Alpine, Void musl) build from source (see above) or use the Flatpak.
 
 ### Plain binary (any distribution)
 
@@ -246,6 +276,7 @@ Make sure `~/.local/bin` is in your `PATH`.
 ### Which one should I pick?
 
 - Your distribution has a package above (AUR, .deb, .rpm, Gentoo, Nix): use it. Updates then come with the rest of your system.
+- Alpine, Void musl or another musl system: build from source with `./install.sh`.
 - You want it sandboxed: Flatpak.
 - You want one file and nothing installed: AppImage.
 - Anything else: the plain binary.
@@ -589,8 +620,10 @@ distribution), `pkg-config`, and the development files for ALSA:
 | Debian / Ubuntu | `sudo apt install cargo pkg-config libasound2-dev` |
 | Fedora | `sudo dnf install cargo pkgconf alsa-lib-devel` |
 | Gentoo | `sudo emerge --ask dev-lang/rust media-libs/alsa-lib` |
+| Alpine | `sudo apk add cargo pkgconf alsa-lib-dev make libxkbcommon-x11` |
+| Void | `sudo xbps-install cargo pkg-config alsa-lib-devel make libxkbcommon-x11` |
 
-Then:
+It builds on glibc and on musl. Then:
 
 ```bash
 git clone https://github.com/canersin/Lapse.git

@@ -49,6 +49,7 @@ pkg_hint() {
         *suse*) echo "sudo zypper install $3" ;;
         *debian*|*ubuntu*) echo "sudo apt install $4" ;;
         *void*) echo "sudo xbps-install $5" ;;
+        *alpine*) echo "sudo apk add $6" ;;
         *) echo "install: $2" ;;
     esac
 }
@@ -74,7 +75,8 @@ else
         echo "Install them with:" >&2
         echo "  $(pkg_hint "dev-lang/rust dev-util/pkgconf media-libs/alsa-lib" \
             "rust pkgconf alsa-lib" "cargo pkgconf alsa-lib-devel" \
-            "cargo pkg-config libasound2-dev" "rust pkg-config alsa-lib-devel")" >&2
+            "cargo pkg-config libasound2-dev" "rust pkg-config alsa-lib-devel" \
+            "cargo pkgconf alsa-lib-dev")" >&2
         echo "(or Rust from https://rustup.rs)" >&2
         exit 1
     fi
@@ -87,6 +89,11 @@ else
     HOST="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
     LOCKED=""
     [ -f Cargo.lock ] && LOCKED="--locked"
+    # rustup's musl target links statically by default, and a static binary can't
+    # load the graphics libraries the window needs.
+    case "$HOST" in
+        *musl*) RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C target-feature=-crt-static"; export RUSTFLAGS ;;
+    esac
     if [ -n "$HOST" ]; then
         cargo build --release $LOCKED --target "$HOST"
         mkdir -p target/release
@@ -178,12 +185,22 @@ esac
 if ! have gpu-screen-recorder; then
     case "$DISTRO" in
         *gentoo*) hint="it is in the GURU overlay: sudo eselect repository enable guru && sudo emaint sync -r guru && sudo emerge --ask media-video/gpu-screen-recorder" ;;
-        *) hint="$(pkg_hint media-video/gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder)" ;;
+        *alpine*|*debian*|*ubuntu*) hint="this distribution doesn't package it; build it from https://git.dec05eba.com/gpu-screen-recorder/about/" ;;
+        *) hint="$(pkg_hint media-video/gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder gpu-screen-recorder)" ;;
     esac
     warn "gpu-screen-recorder is missing; Lapse records with it. $hint"
 fi
 if ! have ffmpeg || ! have ffprobe; then
-    warn "ffmpeg is missing; trimming and exports need it. $(pkg_hint media-video/ffmpeg ffmpeg ffmpeg ffmpeg ffmpeg)"
+    warn "ffmpeg is missing; trimming and exports need it. $(pkg_hint media-video/ffmpeg ffmpeg ffmpeg ffmpeg ffmpeg ffmpeg)"
+fi
+# The window loads this at start; some systems (Alpine, Void) ship it separately.
+xkb_x11=""
+for f in /usr/lib/libxkbcommon-x11.so.0 /usr/lib64/libxkbcommon-x11.so.0 /lib/libxkbcommon-x11.so.0 \
+        /usr/lib/*-linux-*/libxkbcommon-x11.so.0; do
+    [ -e "$f" ] && xkb_x11=1
+done
+if [ -z "$xkb_x11" ]; then
+    warn "libxkbcommon-x11 is missing; the window won't open without it. $(pkg_hint "x11-libs/libxkbcommon[X]" libxkbcommon-x11 libxkbcommon-x11 libxkbcommon-x11-0 libxkbcommon-x11 libxkbcommon-x11)"
 fi
 
 if pgrep -x lapse >/dev/null 2>&1; then
