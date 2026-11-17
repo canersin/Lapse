@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Lapse
+GenericName=Replay Recorder
+Comment=Save the last moments of your game and trim clips
+Exec=lapse --gui
+Icon=lapse
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Recorder;
+Keywords=replay;record;screen;clip;gaming;gpu;wayland;
+StartupWMClass=lapse
+StartupNotify=true

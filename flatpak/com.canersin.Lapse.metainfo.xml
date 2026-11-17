@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.canersin.Lapse</id>
+  <name>Lapse</name>
+  <summary>Save the last moments of your game and trim clips</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="io.github.canersin">
+    <name>Ersin Can Karaca</name>
+  </developer>
+  <description>
+    <p>
+      Lapse keeps the last minutes of your screen in memory with GPU Screen Recorder.
+      Press a key and the moment is saved as a clip, in a folder named after the game.
+    </p>
+    <ul>
+      <li>Replay buffer, full recording and screenshots on global hotkeys</li>
+      <li>Clip library with a player and a lossless trimmer</li>
+      <li>Automatic clips of kill streaks in Counter-Strike 2 and Dota 2</li>
+      <li>Per-game recording settings</li>
+      <li>Discord Rich Presence and sharing links</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.canersin.Lapse.desktop</launchable>
+  <url type="homepage">https://github.com/canersin/Lapse</url>
+  <url type="bugtracker">https://github.com/canersin/Lapse/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.1.0" date="2026-11-17"/>
+  </releases>
+</component>

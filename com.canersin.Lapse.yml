@@ -1,0 +1,181 @@
+id: com.canersin.Lapse
+runtime: org.freedesktop.Platform
+# 26.08 ships ffmpeg and ffprobe with every encoder Lapse uses (x264, VA-API, AAC,
+# Opus, MP3), so they are not built here.
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lapse
+finish-args:
+  - --share=ipc
+  # Update checks, Discord covers, share links.
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # GPU for capture, /dev/input for keyboard and gamepad hotkeys.
+  - --device=all
+  # Clips folder, Steam libraries on any drive (CS2/Dota 2 auto clips), autostart entry.
+  - --filesystem=host
+  # Discord Rich Presence: the Discord, Discord Flatpak and Vesktop sockets.
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/discord-ipc-1
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/.flatpak/dev.vencord.Vesktop:create
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Runs a few commands on the host: GPU Screen Recorder's capture helper (asks for the
+  # password once), and game detection, which reads the host's process list and active
+  # window because the sandbox can't see other programs.
+  - --talk-name=org.freedesktop.Flatpak
+  - --env=LIBVA_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri:/usr/lib/x86_64-linux-gnu/dri/intel-vaapi-driver:/usr/lib/x86_64-linux-gnu/dri/nvidia-vaapi-driver:/usr/lib/x86_64-linux-gnu/GL/lib/dri:/app/lib/dri
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.a
+  - /share/doc
+
+modules:
+  # GPU Screen Recorder, built the way its own Flathub package builds it
+  # (https://github.com/flathub/com.dec05eba.gpu_screen_recorder).
+  - name: libdrm
+    buildsystem: meson
+    config-opts:
+      - -Dintel=auto
+      - -Dradeon=disabled
+      - -Damdgpu=disabled
+      - -Dnouveau=disabled
+      - -Dvmwgfx=disabled
+      - -Domap=disabled
+      - -Dexynos=disabled
+      - -Dfreedreno=disabled
+      - -Dtegra=disabled
+      - -Dvc4=disabled
+      - -Detnaviv=disabled
+      - -Dcairo-tests=disabled
+      - -Dman-pages=disabled
+      - -Dvalgrind=disabled
+      - -Dtests=false
+      - --default-library=static
+      - --buildtype=release
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/mesa/drm.git
+        commit: ad78bb591d02162d3b90890aa4d0a238b2a37cde
+        tag: libdrm-2.4.122
+
+  # VA-API driver for older Intel GPUs, no longer in the runtime.
+  - name: intel-vaapi-driver
+    only-arches:
+      - x86_64
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+      - -Ddriverdir=/app/lib/dri
+      - -Dwith_x11=no
+      - -Dwith_wayland_drm=no
+    sources:
+      - type: archive
+        url: https://github.com/irql-notlessorequal/intel-vaapi-driver/archive/refs/tags/2.4.5.tar.gz
+        sha256: f89f77bc46ec6f46392c1b90b9bf34d09f908bf33c9d16d385897b1fe282bacc
+
+  - name: kms-server-proxy
+    buildsystem: simple
+    build-commands:
+      - ./build.sh
+      - install -Dm755 kms-server-proxy "$FLATPAK_DEST/bin/kms-server-proxy"
+    sources:
+      - type: archive
+        url: https://dec05eba.com/snapshot/kms-server-proxy.git.r33.3b056c0.tar.gz
+        sha512: f009b3b3b2da6c92b2ca0314c1103072437fdec0b96b0dc3e06a2fb159fbe03bee97f1e180991d5da1a4d25e8763b1ee5723ceffb52734d09a93c3128abd2d7c
+        strip-components: 0
+
+  - name: gpu-screen-recorder
+    buildsystem: simple
+    build-commands:
+      - meson setup build
+      - meson configure --prefix=$FLATPAK_DEST --buildtype=release -Dcapabilities=false
+        -Dsystemd=false -Dnvidia_suspend_fix=false -Dffmpeg_static=true -Dstrip=true build
+      - ninja -C build install
+      - gcc kms/server/kms_server.c -o gsr-kms-server $FLATPAK_DEST/lib/libdrm.a -I$FLATPAK_DEST/include/libdrm
+        $GSR_KMS_SERVER_OPTS
+      - install -Dm755 gsr-kms-server "$FLATPAK_DEST/bin/gsr-kms-server"
+      - strip "$FLATPAK_DEST/bin/gsr-kms-server"
+      - strip "$FLATPAK_DEST/bin/gpu-screen-recorder"
+    build-options:
+      env:
+        GSR_KMS_SERVER_OPTS: -fstack-protector-all -O3 -s -flto -Wall -Wextra -Werror
+          -DNDEBUG -static -static-libgcc -fno-link-libatomic
+    sources:
+      - type: archive
+        url: https://dec05eba.com/snapshot/gpu-screen-recorder.git.r1550.f97d1e3.tar.gz
+        sha512: 4579f57495b0ba00da36813b44161f27eb31cbe60374dda94f488082516c78ea78a1c87fc4d7b35ed92b22dbf169426c870512f80b620c059d0f5bf8ac72c6a4
+        strip-components: 0
+      - type: file
+        url: https://ffmpeg.org/releases/ffmpeg-9.0.tar.xz
+        sha256: 7f607a00dd0d28a729d5a4811205812eef01cf6ef6155025febb6f36a9062d52
+        dest: subprojects/packagecache
+        dest-filename: ffmpeg-9.0.tar.xz
+      - type: file
+        url: https://downloads.sourceforge.net/project/lame/lame/4.0/lame-4.0.tar.gz
+        sha256: 3df5124d5ad3a98312ffd7ba6a9b36230e4f8a3e66d3ce0f425e336c32d216eb
+        dest: subprojects/packagecache
+        dest-filename: lame-4.0.tar.gz
+      - type: file
+        url: https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2
+        sha256: a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
+        dest: subprojects/packagecache
+        dest-filename: mbedtls-3.6.7.tar.bz2
+      - type: file
+        url: https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n13.0.19.0.tar.gz
+        sha256: 86d15d1a7c0ac73a0eafdfc57bebfeba7da8264595bf531cf4d8db1c22940116
+        dest: subprojects/packagecache
+        dest-filename: nv-codec-headers-13.0.19.0.tar.gz
+      - type: file
+        url: https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz
+        sha256: 6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1
+        dest: subprojects/packagecache
+        dest-filename: opus-1.6.1.tar.gz
+      - type: file
+        url: https://github.com/Haivision/srt/archive/refs/tags/v1.5.6.tar.gz
+        sha256: 2c4980c2c4cfd142d21b829d939dc51db9c6628af5967fff62fd7290769569c7
+        dest: subprojects/packagecache
+        dest-filename: srt-1.5.6.tar.gz
+      - type: file
+        url: https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2
+        sha256: 6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224
+        dest: subprojects/packagecache
+        dest-filename: x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2
+
+  - name: lapse
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # Crates come from cargo-sources.json; no network during the build.
+        CARGO_HOME: /run/build/lapse/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo build --release --offline --locked
+      - install -Dm755 target/release/Lapse $FLATPAK_DEST/bin/lapse
+      - install -Dm644 assets/lapse.desktop $FLATPAK_DEST/share/applications/com.canersin.Lapse.desktop
+      - desktop-file-edit --set-icon=com.canersin.Lapse --set-key=StartupWMClass --set-value=com.canersin.Lapse
+        $FLATPAK_DEST/share/applications/com.canersin.Lapse.desktop
+      - install -Dm644 assets/icon.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/com.canersin.Lapse.png
+      - install -Dm644 assets/lapse.svg $FLATPAK_DEST/share/icons/hicolor/scalable/apps/com.canersin.Lapse.svg
+      - install -Dm644 assets/lapse-symbolic.svg $FLATPAK_DEST/share/icons/hicolor/symbolic/apps/com.canersin.Lapse-symbolic.svg
+      - install -Dm644 flatpak/com.canersin.Lapse.metainfo.xml $FLATPAK_DEST/share/metainfo/com.canersin.Lapse.metainfo.xml
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - target
+          - dist
+          - packaging
+          - vendor
+          - build-dir
+          - .flatpak-builder
+      - flatpak/cargo-sources.json
