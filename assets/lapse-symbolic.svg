@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 120 120">
+  <!-- Lapse: an hourglass on its side. Left chamber full (play), right empty (rewind). -->
+  <g fill="#2e3436">
+    <rect x="6" y="8" width="11" height="104" rx="5.5"/>
+    <rect x="103" y="8" width="11" height="104" rx="5.5"/>
+    <path d="M25 14 L25 106 L60 60 Z"/>
+    <path fill-rule="evenodd" d="M95 14 L95 106 L60 60 Z M87 37.7 L70.1 60 L87 82.3 Z"/>
+  </g>
+</svg>

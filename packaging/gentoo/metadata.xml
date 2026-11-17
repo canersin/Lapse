@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>canersinkaraca@gmail.com</email>
+		<name>Ersin Can Karaca</name>
+	</maintainer>
+	<upstream>
+		<remote-id type="github">canersin/Lapse</remote-id>
+		<bugs-to>https://github.com/canersin/Lapse/issues</bugs-to>
+	</upstream>
+</pkgmetadata>

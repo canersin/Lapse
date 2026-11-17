@@ -1,0 +1,16 @@
+Package: lapse
+Version: @VERSION@-1
+Architecture: amd64
+Maintainer: Ersin Can Karaca <canersinkaraca@gmail.com>
+Installed-Size: @SIZE@
+Depends: libc6 (>= 2.35), libgcc-s1, libasound2 | libasound2t64, libegl1, libgl1, libwayland-client0, libwayland-egl1, libxkbcommon0, libx11-6, libxcursor1, libxrandr2, libxi6, libdbus-1-3, ffmpeg, curl
+Recommends: gpu-screen-recorder, libnotify-bin, xdg-desktop-portal
+Suggests: zenity
+Section: video
+Priority: optional
+Homepage: https://github.com/canersin/Lapse
+Description: Save the last moments of your game and trim clips
+ Lapse keeps the last minutes of your screen in memory with GPU Screen
+ Recorder. Press a key and the moment is saved as a clip, in a folder named
+ after the game. It has a clip library, a lossless trimmer, automatic clips
+ for Counter-Strike 2 and Dota 2, per-game settings and Discord Rich Presence.
