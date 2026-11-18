@@ -11,6 +11,8 @@ pub fn lookup(en: &str) -> Option<&'static str> {
         "PLAYLISTS" => "OYUNLAR",
         "Reset" => "Sıfırla",
         "All Replays" => "Tüm Klipler",
+        "Collapse sidebar" => "Kenar çubuğunu daralt",
+        "Expand sidebar" => "Kenar çubuğunu genişlet",
         "Missing gpu-screen-recorder" => "gpu-screen-recorder bulunamadı",
         "Start Engine" => "Kaydı Başlat",
         "Stop Engine" => "Kaydı Durdur",

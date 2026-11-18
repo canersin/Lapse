@@ -298,6 +298,8 @@ impl Recorder {
             c.theme_palette = d.theme_palette;
             c.autostart = d.autostart;
             c.check_updates = d.check_updates;
+            c.sidebar_width = d.sidebar_width;
+            c.sidebar_collapsed = d.sidebar_collapsed;
             c.discord_rpc = d.discord_rpc;
             c.discord_rpc_button = d.discord_rpc_button;
             c.hotkey_replay = d.hotkey_replay;

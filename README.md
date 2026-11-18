@@ -299,7 +299,11 @@ On Wayland, GNOME and KDE ask once whether Lapse may use global shortcuts.
 Accept, or the keys will only work while the Lapse window has focus.
 
 Lapse starts by itself when you log in. You can turn this off under
-Settings > Services.
+Settings > Autostart.
+
+Drag the sidebar's right edge to make it wider or narrower. The button in its
+top-left corner shrinks it to icons and back; dragging the edge almost shut does
+the same. Lapse remembers the width.
 
 ## Keyboard shortcuts
 

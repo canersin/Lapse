@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prints the Gentoo ebuild for a version, with the crate list from Cargo.lock.
 
-    python3 packaging/gentoo/ebuild.py 2.1.1 > lapse-2.1.1.ebuild
+    python3 packaging/gentoo/ebuild.py 2.2.1 > lapse-2.2.1.ebuild
 
 packaging/build-release.sh gentoo writes it to dist/gentoo/media-video/lapse/.
 """
