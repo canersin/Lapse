@@ -43,6 +43,7 @@ pub enum IconKind {
     ExitFullscreen,
     Pencil,
     Crosshair,
+    Sidebar,
 }
 
 pub fn draw_vector_icon(painter: &Painter, center: Pos2, size: f32, kind: IconKind, color: Color32) {
@@ -265,6 +266,13 @@ pub fn draw_vector_icon(painter: &Painter, center: Pos2, size: f32, kind: IconKi
                 Pos2::new(center.x + r * 0.7, center.y - r * 0.45),
             ];
             painter.add(egui::Shape::line(pts, stroke));
+        }
+        IconKind::Sidebar => {
+            // Window with a panel on the left, like a browser's sidebar button.
+            let frame = Rect::from_center_size(center, Vec2::new(r * 2.0, r * 1.7));
+            painter.rect_stroke(frame, Rounding::same(2.5), stroke);
+            let x = frame.left() + frame.width() * 0.36;
+            painter.line_segment([Pos2::new(x, frame.top()), Pos2::new(x, frame.bottom())], stroke);
         }
         IconKind::Close => {
             painter.line_segment([Pos2::new(center.x - r * 0.6, center.y - r * 0.6), Pos2::new(center.x + r * 0.6, center.y + r * 0.6)], stroke);

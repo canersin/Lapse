@@ -96,6 +96,10 @@ pub struct Config {
     pub record_only_game: bool,
     pub autostart: bool,
     pub check_updates: bool,
+    /// Width of the sidebar while it is expanded.
+    pub sidebar_width: f32,
+    /// Sidebar shrunk to icons only.
+    pub sidebar_collapsed: bool,
 }
 
 /// A game the user added by hand (e.g. Minecraft, which runs as "java"), and/or recording
@@ -302,6 +306,8 @@ impl Default for Config {
             record_only_game: false,
             autostart: true,
             check_updates: true,
+            sidebar_width: 260.0,
+            sidebar_collapsed: false,
         }
     }
 }
@@ -340,6 +346,9 @@ impl Config {
         config.cs2_lead_in = config.cs2_lead_in.clamp(3, 60);
         config.dota_lead_in = config.dota_lead_in.clamp(3, 60);
         config.games.retain(|g| !g.name.trim().is_empty());
+        if !config.sidebar_width.is_finite() {
+            config.sidebar_width = 260.0;
+        }
         if config.bitrate_kbps < 500 {
             config.bitrate_kbps = match config.quality.as_str() {
                 "ultra" => 50000,

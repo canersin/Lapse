@@ -12,8 +12,8 @@ use crate::hardware::gpu::{get_gpus, GpuDevice};
 use crate::hardware::monitor::{get_monitors, MonitorDevice};
 use crate::ipc;
 
-use super::components::render_nav_rail;
-use super::components::motion::{page_fade_in, ToastKind, Toasts};
+use super::components::{render_nav_rail, RAIL_COLLAPSED_WIDTH};
+use super::components::motion::{ease_out, page_fade_in, ToastKind, Toasts, MEDIUM};
 use super::state::{GuiState, NavigationTab};
 use super::theme::{apply_theme, M3Shapes, MonetPaletteKind, MonetTheme};
 use super::views::about_view::render_about;
@@ -150,6 +150,17 @@ impl LapseApp {
     }
 }
 
+/// Narrowest the expanded sidebar can be dragged.
+const SIDEBAR_MIN_WIDTH: f32 = 200.0;
+/// Dragging the edge narrower than this collapses the sidebar to icons.
+const SIDEBAR_SNAP_WIDTH: f32 = 140.0;
+/// Room the pages need beside the sidebar.
+const CONTENT_MIN_WIDTH: f32 = 640.0;
+
+fn sidebar_max_width(window_width: f32) -> f32 {
+    (window_width - CONTENT_MIN_WIDTH).clamp(SIDEBAR_MIN_WIDTH, 420.0)
+}
+
 impl LapseApp {
     /// "Trim" in a clip notification: open that clip in the trimmer.
     fn take_open_request(&mut self, ctx: &egui::Context) {
@@ -170,6 +181,45 @@ impl LapseApp {
             self.player_state = PlayerState::new(path);
             self.state.active_tab = NavigationTab::Library;
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+    }
+
+    /// Grip on the sidebar's right edge. Dragging it sets the width; dragging it almost
+    /// shut collapses the sidebar, and dragging a collapsed one out expands it again.
+    fn sidebar_resize_handle(&mut self, ctx: &egui::Context, sidebar: egui::Rect, max_width: f32) {
+        let grip = egui::Rect::from_x_y_ranges(sidebar.right() - 4.0..=sidebar.right() + 4.0, sidebar.y_range());
+        let resp = egui::Area::new(egui::Id::new("sidebar_resize_grip"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(grip.min)
+            .show(ctx, |ui| ui.allocate_exact_size(grip.size(), egui::Sense::drag()).1)
+            .inner;
+
+        if resp.hovered() || resp.dragged() {
+            ctx.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            let color = if resp.dragged() { self.theme.primary } else { self.theme.outline };
+            ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("sidebar_resize_line")))
+                .line_segment(
+                    [egui::pos2(sidebar.right(), sidebar.top()), egui::pos2(sidebar.right(), sidebar.bottom())],
+                    Stroke::new(2.0_f32, color),
+                );
+        }
+        if resp.dragged() {
+            if let Some(pointer) = ctx.pointer_latest_pos() {
+                let width = pointer.x - sidebar.left();
+                if self.config.sidebar_collapsed {
+                    if width > SIDEBAR_SNAP_WIDTH {
+                        self.config.sidebar_collapsed = false;
+                        self.config.sidebar_width = width.clamp(SIDEBAR_MIN_WIDTH, max_width);
+                    }
+                } else if width < SIDEBAR_SNAP_WIDTH {
+                    self.config.sidebar_collapsed = true;
+                } else {
+                    self.config.sidebar_width = width.clamp(SIDEBAR_MIN_WIDTH, max_width);
+                }
+            }
+        }
+        if resp.drag_released() {
+            let _ = self.config.save();
         }
     }
 }
@@ -255,22 +305,34 @@ impl eframe::App for LapseApp {
             return;
         }
 
-        egui::SidePanel::left("m3_nav_rail")
+        // Sidebar: dragged wider or narrower by its edge, or collapsed to icons.
+        let max_sidebar = sidebar_max_width(ctx.screen_rect().width());
+        let expanded_w = self.config.sidebar_width.clamp(SIDEBAR_MIN_WIDTH, max_sidebar);
+        let collapse = ease_out(ctx.animate_bool_with_time(
+            egui::Id::new("sidebar_collapse"),
+            self.config.sidebar_collapsed,
+            MEDIUM,
+        ));
+        let sidebar_w = expanded_w + (RAIL_COLLAPSED_WIDTH - expanded_w) * collapse;
+        let mut sidebar_toggled = false;
+        let sidebar = egui::SidePanel::left("m3_nav_rail")
             .resizable(false)
-            .exact_width(220.0)
+            .exact_width(sidebar_w)
             .frame(
                 egui::Frame::default()
                     .fill(self.theme.surface_container_low)
                     .stroke(Stroke::new(1.0_f32, self.theme.outline_variant))
-                    .inner_margin(Margin::symmetric(10.0, 12.0)),
+                    .inner_margin(Margin::symmetric(0.0, 12.0)),
             )
             .show(ctx, |ui| {
+                // While it animates, nothing may spill past the edge.
+                ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
                 let theme = self.theme;
                 let status = self.last_status.as_ref();
                 let is_recording = status.map(|s| s.recording).unwrap_or(false);
                 let is_installed = status.map(|s| s.is_installed).unwrap_or(true);
                 let waiting_for_game = status.map(|s| s.waiting_for_game).unwrap_or(false);
-                render_nav_rail(
+                sidebar_toggled = render_nav_rail(
                     ui,
                     &theme,
                     &mut self.state.active_tab,
@@ -281,6 +343,7 @@ impl eframe::App for LapseApp {
                     self.cached_clips.len(),
                     &game_counts,
                     &mut self.state.selected_game_filter,
+                    self.config.sidebar_collapsed,
                     |cmd| {
                         dispatch_ipc(cmd);
                     },
@@ -291,6 +354,11 @@ impl eframe::App for LapseApp {
                     },
                 );
             });
+        if sidebar_toggled {
+            self.config.sidebar_collapsed = !self.config.sidebar_collapsed;
+            let _ = self.config.save();
+        }
+        self.sidebar_resize_handle(ctx, sidebar.response.rect, max_sidebar);
 
         if self.state.active_tab != previous_tab {
             if previous_tab == NavigationTab::Settings {
