@@ -38,13 +38,18 @@ pub fn rename_clip(save_path: &Path, clip: &Path, input: &str) -> Result<PathBuf
     // Side files are keyed by file name; move them along (they may not exist).
     let thumbs = crate::clip_index::thumb_dir(save_path);
     let old = clip.file_name().unwrap_or_default().to_string_lossy().to_string();
-    for suffix in [".jpg", ".markers.json"] {
+    for suffix in [".jpg", ".markers.json", ".tracks.json"] {
         let _ = std::fs::rename(thumbs.join(format!("{}{}", old, suffix)), thumbs.join(format!("{}{}", file_name, suffix)));
     }
+    let _ = std::fs::rename(
+        clip.with_file_name(format!("{}.tracks.json", old)),
+        target.with_file_name(format!("{}.tracks.json", file_name)),
+    );
     if crate::favorites::is_favorite(save_path, clip) {
         crate::favorites::forget(save_path, clip);
         crate::favorites::toggle(save_path, &target);
     }
+    crate::notes::rename(save_path, clip, &target);
     crate::clip_index::index().refresh();
     Ok(target)
 }

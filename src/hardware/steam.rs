@@ -9,17 +9,35 @@ use std::sync::{Mutex, OnceLock};
 const TOOL_APP_IDS: &[u32] = &[0, 7, 769, 228980, 1070560, 1391110, 1628350, 1493710, 2180100, 2348590, 2805730, 3658110];
 
 pub fn steam_roots() -> Vec<PathBuf> {
-    let Ok(home) = std::env::var("HOME") else { return Vec::new() };
-    let home = PathBuf::from(home);
-    [
-        ".local/share/Steam",
-        ".steam/steam",
-        ".var/app/com.valvesoftware.Steam/.local/share/Steam",
-    ]
-    .iter()
-    .map(|p| home.join(p))
-    .filter(|p| p.join("steamapps").is_dir())
-    .collect()
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(home) = std::env::var("HOME") else { return Vec::new() };
+        let home = PathBuf::from(home);
+        [
+            ".local/share/Steam",
+            ".steam/steam",
+            ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+        ]
+        .iter()
+        .map(|p| home.join(p))
+        .filter(|p| p.join("steamapps").is_dir())
+        .collect()
+    }
+    #[cfg(windows)]
+    {
+        let mut roots = Vec::new();
+        if let Some(prog) = std::env::var_os("ProgramFiles(x86)").or_else(|| std::env::var_os("ProgramFiles")) {
+            let p = PathBuf::from(prog).join("Steam");
+            if p.join("steamapps").is_dir() {
+                roots.push(p);
+            }
+        }
+        roots
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        Vec::new()
+    }
 }
 
 /// All Steam library folders, from `libraryfolders.vdf`.
@@ -172,7 +190,17 @@ fn cover_in(root: &Path, app_id: u32) -> Option<PathBuf> {
 pub fn sanitize_folder_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c == '/' || c == '\\' || c.is_control() { ' ' } else { c })
+        .map(|c| {
+            let is_bad = c == '/'
+                || c == '\\'
+                || c.is_control()
+                || (cfg!(windows) && matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'));
+            if is_bad {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect();
     let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
     let cleaned = cleaned.trim_matches('.').trim().to_string();

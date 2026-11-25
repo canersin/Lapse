@@ -57,19 +57,57 @@ pub fn plan(save_path: &Path, max_bytes: u64) -> Vec<(PathBuf, u64)> {
     victims
 }
 
-pub fn enforce(config: &Config) -> Option<CleanupResult> {
-    if !config.cleanup_enabled || config.cleanup_max_gb == 0 {
-        return None;
+/// Returns clips older than `days` days (by modified time) that are not favorites
+/// and have no note and no tags.
+pub fn plan_old(save_path: &Path, days: u32) -> Vec<(PathBuf, u64)> {
+    let mut files = Vec::new();
+    collect(save_path, 0, &mut files);
+    let favorites = crate::favorites::load(save_path);
+    let notes = crate::notes::load(save_path);
+    let age_secs = days as u64 * 86400;
+    let now = SystemTime::now();
+
+    let mut victims = Vec::new();
+    for (path, size, mtime) in files {
+        let is_old = now.duration_since(mtime).map(|d| d.as_secs() >= age_secs).unwrap_or(false);
+        if !is_old {
+            continue;
+        }
+        if crate::favorites::contains(&favorites, save_path, &path) {
+            continue;
+        }
+        if crate::notes::has_any(&notes, save_path, &path) {
+            continue;
+        }
+        victims.push((path, size));
     }
-    let max_bytes = config.cleanup_max_gb as u64 * 1024 * 1024 * 1024;
+    victims
+}
+
+pub fn enforce(config: &Config) -> Option<CleanupResult> {
     let mut result = CleanupResult { removed: 0, freed_bytes: 0 };
-    for (path, size) in plan(&config.save_path, max_bytes) {
-        if std::fs::remove_file(&path).is_ok() {
-            let _ = std::fs::remove_file(crate::clip_index::thumb_path_for(&config.save_path, &path));
-            result.removed += 1;
-            result.freed_bytes += size;
+
+    if config.cleanup_old_enabled && config.cleanup_old_days > 0 {
+        for (path, size) in plan_old(&config.save_path, config.cleanup_old_days) {
+            if std::fs::remove_file(&path).is_ok() {
+                let _ = std::fs::remove_file(crate::clip_index::thumb_path_for(&config.save_path, &path));
+                result.removed += 1;
+                result.freed_bytes += size;
+            }
         }
     }
+
+    if config.cleanup_enabled && config.cleanup_max_gb > 0 {
+        let max_bytes = config.cleanup_max_gb as u64 * 1024 * 1024 * 1024;
+        for (path, size) in plan(&config.save_path, max_bytes) {
+            if std::fs::remove_file(&path).is_ok() {
+                let _ = std::fs::remove_file(crate::clip_index::thumb_path_for(&config.save_path, &path));
+                result.removed += 1;
+                result.freed_bytes += size;
+            }
+        }
+    }
+
     (result.removed > 0).then_some(result)
 }
 
@@ -100,6 +138,50 @@ mod tests {
         let victims = plan(&dir, 1500);
         let names: Vec<_> = victims.iter().map(|v| v.0.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert_eq!(names, vec!["b.mp4", "c.mp4"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn age_cleanup_removes_only_old_plain() {
+        let dir = std::env::temp_dir().join(format!("lapse-cleanup-age-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let old_time = SystemTime::now() - std::time::Duration::from_secs(45 * 86400);
+        let new_time = SystemTime::now();
+
+        let files = [
+            ("old_plain.mp4", old_time),
+            ("old_fav.mp4", old_time),
+            ("old_tagged.mp4", old_time),
+            ("new_clip.mp4", new_time),
+        ];
+
+        for (name, mtime) in &files {
+            let p = dir.join(name);
+            std::fs::write(&p, vec![0u8; 1000]).unwrap();
+            let file = std::fs::File::options().write(true).open(&p).unwrap();
+            file.set_modified(*mtime).unwrap();
+        }
+
+        crate::favorites::toggle(&dir, &dir.join("old_fav.mp4"));
+        crate::notes::add_tag(&dir, &dir.join("old_tagged.mp4"), "tag1");
+
+        let mut config = Config::default();
+        config.save_path = dir.clone();
+        config.cleanup_old_enabled = true;
+        config.cleanup_old_days = 30;
+        config.cleanup_enabled = false;
+
+        let res = enforce(&config).expect("enforce should delete old plain clip");
+        assert_eq!(res.removed, 1);
+        assert_eq!(res.freed_bytes, 1000);
+
+        assert!(!dir.join("old_plain.mp4").exists());
+        assert!(dir.join("old_fav.mp4").exists());
+        assert!(dir.join("old_tagged.mp4").exists());
+        assert!(dir.join("new_clip.mp4").exists());
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

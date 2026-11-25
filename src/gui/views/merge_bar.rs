@@ -113,6 +113,11 @@ pub fn render_bar(ui: &mut egui::Ui, theme: &MonetTheme, clips: &[ClipMetadata],
                     if m3_small_button(ui, theme, t("Show in folder")).clicked() {
                         let _ = open::that(path.parent().unwrap_or(path));
                     }
+                    // The app polls this request file, so the merged video opens in the trimmer
+                    // where text, images, videos and sound can be added on top.
+                    if m3_small_button(ui, theme, t("Open in editor")).clicked() {
+                        let _ = std::fs::write(crate::utils::open_request_path(), path.to_string_lossy().as_bytes());
+                    }
                 }
                 Some(ExportState::Failed(msg)) => {
                     ui.label(RichText::new(format!("{}: {}", t("Merge failed"), msg)).size(12.0).color(theme.error));
@@ -129,33 +134,34 @@ pub fn render_bar(ui: &mut egui::Ui, theme: &MonetTheme, clips: &[ClipMetadata],
         .rounding(M3Shapes::MEDIUM)
         .inner_margin(Margin::symmetric(12.0, 8.0))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.set_min_height(36.0);
-                m3_vector_icon(ui, IconKind::Scissors, 16.0, theme.primary);
-                let text = if count == 0 && mode == Mode::Merge {
-                    t("Click clips in the order you want them.").to_string()
-                } else if count == 0 {
-                    t("Click clips to select them.").to_string()
-                } else {
-                    format!("{} {}", count, t("clips selected"))
-                };
-                ui.label(RichText::new(text).size(13.0).color(theme.on_surface));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if m3_outlined_button(ui, theme, t("Cancel")).clicked() {
-                        with(|s| {
-                            s.selecting = false;
-                            s.selected.clear();
-                        });
-                    }
-                    if mode == Mode::Merge {
-                        ui.add_enabled_ui(count >= 2, |ui| {
-                            if m3_filled_button(ui, theme, t("Merge")).clicked() {
-                                start_merge(clips);
-                            }
-                        });
-                        return;
-                    }
-                    let selected = with(|s| s.selected.clone());
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.set_min_height(36.0);
+                    m3_vector_icon(ui, IconKind::Scissors, 16.0, theme.primary);
+                    let text = if count == 0 && mode == Mode::Merge {
+                        t("Click clips in the order you want them.").to_string()
+                    } else if count == 0 {
+                        t("Click clips to select them.").to_string()
+                    } else {
+                        format!("{} {}", count, t("clips selected"))
+                    };
+                    ui.label(RichText::new(text).size(13.0).color(theme.on_surface));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if m3_outlined_button(ui, theme, t("Cancel")).clicked() {
+                            with(|s| {
+                                s.selecting = false;
+                                s.selected.clear();
+                            });
+                        }
+                        if mode == Mode::Merge {
+                            ui.add_enabled_ui(count >= 2, |ui| {
+                                if m3_filled_button(ui, theme, t("Merge")).clicked() {
+                                    start_merge(clips);
+                                }
+                            });
+                            return;
+                        }
+                        let selected = with(|s| s.selected.clone());
                     ui.add_enabled_ui(count > 0, |ui| {
                         if m3_danger_button(ui, theme, t("Delete")).clicked() {
                             let pairs = selected
@@ -175,6 +181,85 @@ pub fn render_bar(ui: &mut egui::Ui, theme: &MonetTheme, clips: &[ClipMetadata],
                                 }
                             }
                         }
+                        if m3_outlined_button(ui, theme, t("Unfavorite")).on_hover_text(t("Unstar all selected clips")).clicked() {
+                            for p in &selected {
+                                if crate::favorites::is_favorite(save_path, p) {
+                                    crate::favorites::toggle(save_path, p);
+                                }
+                            }
+                        }
+
+                        let mut games: Vec<String> = clips.iter().map(|c| c.game_tag.clone()).collect();
+                        games.sort();
+                        games.dedup();
+                        if !games.iter().any(|g| g == "Gameplay") {
+                            games.insert(0, "Gameplay".to_string());
+                        }
+
+                        let mut chosen_game = None;
+                        crate::gui::components::dropdown::m3_dropdown_sized(
+                            ui,
+                            theme,
+                            "lapse_merge_move_to",
+                            t("Move to…"),
+                            140.0,
+                            32.0,
+                            |ui| {
+                                for game in &games {
+                                    if ui.selectable_label(false, game).clicked() {
+                                        chosen_game = Some(game.clone());
+                                    }
+                                }
+                            },
+                        );
+                        if let Some(target_game) = chosen_game {
+                            move_clips(save_path, &selected, &target_game);
+                        }
+
+                        let tag_toggle_id = egui::Id::new("lapse_merge_show_add_tag");
+                        let mut show_tag_input: bool = ui.data(|d| d.get_temp(tag_toggle_id)).unwrap_or(false);
+                        if show_tag_input {
+                            let tag_input_id = egui::Id::new("lapse_merge_tag_input");
+                            let mut tag_input: String = ui.data(|d| d.get_temp(tag_input_id)).unwrap_or_default();
+                            if m3_small_button(ui, theme, "×").on_hover_text(t("Cancel")).clicked() {
+                                show_tag_input = false;
+                                tag_input.clear();
+                            }
+                            let apply_clicked = m3_small_button(ui, theme, t("Apply")).clicked();
+                            let resp = crate::gui::components::text_field::m3_text_field(
+                                ui,
+                                theme,
+                                &mut tag_input,
+                                crate::gui::components::text_field::TextFieldOpts {
+                                    hint: t("Add tag..."),
+                                    width: Some(100.0),
+                                    ..Default::default()
+                                },
+                            );
+                            if !resp.has_focus() && !resp.lost_focus() && tag_input.is_empty() {
+                                resp.request_focus();
+                            }
+                            let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter)) && resp.has_focus();
+                            let escape_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape));
+
+                            if apply_clicked || enter_pressed {
+                                let trimmed = tag_input.trim();
+                                if !trimmed.is_empty() {
+                                    for p in &selected {
+                                        crate::notes::add_tag(save_path, p, trimmed);
+                                    }
+                                }
+                                tag_input.clear();
+                                show_tag_input = false;
+                            } else if escape_pressed {
+                                tag_input.clear();
+                                show_tag_input = false;
+                            }
+                            ui.data_mut(|d| d.insert_temp(tag_input_id, tag_input));
+                        } else if m3_outlined_button(ui, theme, t("Add tag…")).clicked() {
+                            show_tag_input = true;
+                        }
+                        ui.data_mut(|d| d.insert_temp(tag_toggle_id, show_tag_input));
                     });
                     let all_visible = !visible.is_empty() && visible.iter().all(|c| selected.contains(&c.path));
                     if m3_small_button(ui, theme, if all_visible { t("Select none") } else { t("Select all") }).clicked() {
@@ -192,7 +277,67 @@ pub fn render_bar(ui: &mut egui::Ui, theme: &MonetTheme, clips: &[ClipMetadata],
                     }
                 });
             });
+
+            let (still_selecting, selected_paths) = with(|s| (s.selecting, s.selected.clone()));
+            if still_selecting && mode == Mode::Merge && selected_paths.len() >= 2 {
+                ui.add_space(4.0);
+                egui::ScrollArea::horizontal().auto_shrink([false; 2]).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let mut swap = None;
+                        for (i, path) in selected_paths.iter().enumerate() {
+                            let raw_name = path.file_name().unwrap_or_default().to_string_lossy();
+                            let short_name = truncate_name(&raw_name);
+                            ui.label(RichText::new(format!("{} {}", i + 1, short_name)).size(12.5).color(theme.on_surface));
+                            ui.add_enabled_ui(i > 0, |ui| {
+                                if m3_small_button(ui, theme, "◀").clicked() {
+                                    swap = Some((i, i - 1));
+                                }
+                            });
+                            ui.add_enabled_ui(i + 1 < selected_paths.len(), |ui| {
+                                if m3_small_button(ui, theme, "▶").clicked() {
+                                    swap = Some((i, i + 1));
+                                }
+                            });
+                            if i + 1 < selected_paths.len() {
+                                ui.add_space(6.0);
+                            }
+                        }
+                        if let Some((a, b)) = swap {
+                            with(|s| {
+                                if a < s.selected.len() && b < s.selected.len() {
+                                    s.selected.swap(a, b);
+                                }
+                            });
+                        }
+                    });
+                });
+            }
         });
+    });
+}
+
+fn truncate_name(name: &str) -> String {
+    if name.chars().count() > 18 {
+        let prefix: String = name.chars().take(17).collect();
+        format!("{}…", prefix)
+    } else {
+        name.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncates_long_names_safely() {
+        assert_eq!(truncate_name("short.mp4"), "short.mp4");
+        assert_eq!(truncate_name("123456789012345678"), "123456789012345678");
+        assert_eq!(truncate_name("1234567890123456789"), "12345678901234567…");
+        assert_eq!(truncate_name("Replay_2026-11-16_00-47-30.mp4"), "Replay_2026-11-16…");
+        assert_eq!(truncate_name("öçşğüıöçşğüıöçşğüı"), "öçşğüıöçşğüıöçşğüı");
+        assert_eq!(truncate_name("öçşğüıöçşğüıöçşğüıextra"), "öçşğüıöçşğüıöçşğü…");
+    }
 }
 
 fn start_merge(clips: &[ClipMetadata]) {
@@ -209,5 +354,67 @@ fn start_merge(clips: &[ClipMetadata]) {
         s.selecting = false;
         s.selected.clear();
     });
+}
+
+fn move_clips(save_path: &std::path::Path, selected: &[PathBuf], target_game: &str) {
+    let dest_dir = if target_game == "Gameplay" {
+        save_path.to_path_buf()
+    } else {
+        save_path.join(target_game)
+    };
+    let _ = std::fs::create_dir_all(&dest_dir);
+
+    for clip in selected {
+        if !clip.exists() {
+            continue;
+        }
+        if clip.parent() == Some(&dest_dir) {
+            continue;
+        }
+        let ext_str = clip.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let stem_str = clip.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let mut candidate = if ext_str.is_empty() {
+            dest_dir.join(stem_str)
+        } else {
+            dest_dir.join(format!("{}.{}", stem_str, ext_str))
+        };
+        let mut counter = 2;
+        while candidate.exists() {
+            candidate = if ext_str.is_empty() {
+                dest_dir.join(format!("{} ({})", stem_str, counter))
+            } else {
+                dest_dir.join(format!("{} ({}).{}", stem_str, counter, ext_str))
+            };
+            counter += 1;
+        }
+        let new_path = candidate;
+
+        if std::fs::rename(clip, &new_path).is_ok() {
+            let old_thumb = crate::clip_index::thumb_path_for(save_path, clip);
+            let new_thumb = crate::clip_index::thumb_path_for(save_path, &new_path);
+            if old_thumb.exists() && old_thumb != new_thumb {
+                let _ = std::fs::rename(&old_thumb, &new_thumb);
+            }
+            let thumbs = crate::clip_index::thumb_dir(save_path);
+            let old_name = clip.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let new_name = new_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let old_markers = thumbs.join(format!("{}.markers.json", old_name));
+            let new_markers = thumbs.join(format!("{}.markers.json", new_name));
+            if old_markers.exists() && old_markers != new_markers {
+                let _ = std::fs::rename(&old_markers, &new_markers);
+            }
+            crate::notes::rename(save_path, clip, &new_path);
+            if crate::favorites::is_favorite(save_path, clip) {
+                crate::favorites::forget(save_path, clip);
+                crate::favorites::toggle(save_path, &new_path);
+            }
+        }
+    }
+
+    with(|s| {
+        s.selecting = false;
+        s.selected.clear();
+    });
+    crate::clip_index::index().refresh();
 }
 

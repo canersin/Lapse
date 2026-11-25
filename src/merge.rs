@@ -4,9 +4,8 @@
 //! concat demuxer. Mixed resolutions/codecs are re-encoded to the first clip's size.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use crate::export::{h264_encoder, run_job, video_encode_args, ExportJob, H264Encoder};
+use crate::export::{h264_encoder, quality_to_bitrate_kbps, run_job, video_encode_args_for, ExportJob, H264Encoder};
 
 /// `Merged_2026-11-15_23-10-04.mp4` in the folder of the first clip.
 pub fn default_output(first: &Path) -> PathBuf {
@@ -25,7 +24,7 @@ struct StreamInfo {
 }
 
 fn probe(path: &Path) -> StreamInfo {
-    let out = Command::new("ffprobe")
+    let out = crate::utils::ffprobe_cmd()
         .args(["-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate", "-of", "csv=p=0"])
         .arg(path)
         .output()
@@ -77,10 +76,14 @@ fn copy_args(inputs: &[PathBuf], output: &Path) -> Vec<String> {
 /// Re-encoding join: every clip is scaled/padded to the first one's size and frame rate,
 /// and its audio tracks are mixed to one stereo track (silence for clips without audio).
 fn reencode_args(inputs: &[(PathBuf, f64)], infos: &[StreamInfo], output: &Path) -> Vec<String> {
+    reencode_args_for(h264_encoder(), inputs, infos, output)
+}
+
+fn reencode_args_for(encoder: H264Encoder, inputs: &[(PathBuf, f64)], infos: &[StreamInfo], output: &Path) -> Vec<String> {
     let (w, h) = (infos[0].width.max(2) / 2 * 2, infos[0].height.max(2) / 2 * 2);
     let fps = fps_value(&infos[0].fps).round().clamp(1.0, 240.0);
     let mut args: Vec<String> = PROGRESS.map(String::from).to_vec();
-    let vaapi = h264_encoder() == H264Encoder::Vaapi;
+    let vaapi = !cfg!(windows) && encoder == H264Encoder::Vaapi && std::path::Path::new("/dev/dri/renderD128").exists();
     if vaapi {
         args.extend(["-vaapi_device".into(), "/dev/dri/renderD128".into()]);
     }
@@ -105,7 +108,12 @@ fn reencode_args(inputs: &[(PathBuf, f64)], infos: &[StreamInfo], output: &Path)
     }
     let mut filters = Vec::new();
     let mut encode = Vec::new();
-    video_encode_args(&mut encode, &mut filters, Some(20), None);
+    let bitrate = if encoder == H264Encoder::MediaFoundation {
+        Some(quality_to_bitrate_kbps(20, w, h, fps))
+    } else {
+        None
+    };
+    video_encode_args_for(encoder, &mut encode, &mut filters, Some(20), bitrate);
     let tail = if filters.is_empty() { "null".to_string() } else { filters.join(",") };
     graph.push(format!("{pairs}concat=n={}:v=1:a=1[vcat][aout]", inputs.len()));
     graph.push(format!("[vcat]{tail}[vout]"));
@@ -135,11 +143,28 @@ pub fn start(inputs: Vec<(PathBuf, f64)>, output: PathBuf) -> ExportJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::export::video_encode_args;
 
     #[test]
     fn fps_parsing() {
         assert_eq!(fps_value("60/1"), 60.0);
         assert!((fps_value("30000/1001") - 29.97).abs() < 0.01);
+    }
+
+    #[test]
+    fn merge_reencode_args_media_foundation() {
+        let inputs = vec![(PathBuf::from("/v/1.mp4"), 5.0), (PathBuf::from("/v/2.mp4"), 5.0)];
+        let infos = vec![
+            StreamInfo { video: "h264".into(), width: 1920, height: 1080, fps: "60/1".into(), audio: vec!["aac".into()] },
+            StreamInfo { video: "h264".into(), width: 1280, height: 720, fps: "30/1".into(), audio: vec!["aac".into()] },
+        ];
+        let args = reencode_args_for(H264Encoder::MediaFoundation, &inputs, &infos, Path::new("/v/out.mp4"));
+        let joined = args.join(" ");
+        assert!(joined.contains("h264_mf"), "{}", joined);
+        assert!(joined.contains("nv12"), "{}", joined);
+        assert!(joined.contains("-b:v "), "{}", joined);
+        assert!(!joined.contains("libx264"), "{}", joined);
+        assert!(!joined.contains("crf"), "{}", joined);
     }
 
     /// Joins real clips (same settings, then mixed sizes); `cargo test -- --ignored`.
@@ -150,7 +175,7 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let make = |name: &str, size: &str, tracks: usize| {
             let path = dir.join(name);
-            let mut cmd = Command::new("ffmpeg");
+            let mut cmd = crate::utils::ffmpeg_cmd();
             cmd.args(["-v", "error", "-y", "-f", "lavfi", "-i", &format!("testsrc2=size={}:rate=30:duration=3", size)]);
             for t in 0..tracks {
                 cmd.args(["-f", "lavfi", "-i", &format!("sine=f={}:d=3", 440 + t * 220)]);
@@ -159,7 +184,15 @@ mod tests {
             for t in 0..tracks {
                 cmd.args(["-map", &(t + 1).to_string()]);
             }
-            assert!(cmd.args(["-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac"]).arg(&path).status().unwrap().success());
+            let mut enc_args = Vec::new();
+            let mut enc_filters = Vec::new();
+            video_encode_args(&mut enc_args, &mut enc_filters, Some(23), None);
+            if !enc_filters.is_empty() {
+                cmd.args(["-vf", &enc_filters.join(",")]);
+            }
+            cmd.args(&enc_args);
+            cmd.args(["-c:a", "aac"]).arg(&path);
+            assert!(cmd.status().unwrap().success());
             (path, 3.0)
         };
         let a = make("a.mp4", "640x360", 2);

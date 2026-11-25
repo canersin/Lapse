@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -92,9 +92,72 @@ impl ClipIndex {
     }
 }
 
+/// Formats a clip filename with the game name prefix and sanitized characters.
+pub fn game_file_name(game: &str, rest: &str) -> String {
+    let cleaned: String = game
+        .chars()
+        .map(|c| {
+            if matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*') || c.is_control() {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cleaned = cleaned.trim_matches(|c: char| c == '.' || c == ' ');
+    let mut cut = cleaned;
+    if cut.len() > 100 {
+        let mut end = 100;
+        while !cut.is_char_boundary(end) {
+            end -= 1;
+        }
+        cut = &cut[..end];
+    }
+    let cut = cut.trim_matches(|c: char| c == '.' || c == ' ');
+    let stem = if cut.is_empty() { "Gameplay" } else { cut };
+    format!("{}_{}", stem, rest)
+}
+
+/// Returns `path` itself if it does not exist, otherwise the first `<stem>_<n>.<ext>` that does not exist.
+pub fn free_path(path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+    let parent = path.parent();
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = path.extension().and_then(|e| e.to_str());
+    for i in 2.. {
+        let name = match ext {
+            Some(ext) => format!("{}_{}.{}", stem, i, ext),
+            None => format!("{}_{}", stem, i),
+        };
+        let candidate = match parent {
+            Some(p) => p.join(name),
+            None => PathBuf::from(name),
+        };
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    path
+}
+
 /// Replays and recordings saved by Lapse, as opposed to exports or other videos in the folder.
 pub fn is_recording(name: &str) -> bool {
-    name.starts_with("Replay_") || name.starts_with("record_")
+    if name.starts_with("Screenshot_") {
+        return false;
+    }
+    if name.starts_with("Replay_") || name.starts_with("record_") {
+        return true;
+    }
+    // "Deadlock_2026-11-15_22-31-57.mp4": named after the game.
+    let stamped = |pattern: &[u8]| {
+        name.as_bytes()
+            .windows(pattern.len())
+            .any(|w| w.iter().zip(pattern).all(|(c, p)| if *p == b'0' { c.is_ascii_digit() } else { c == p }))
+    };
+    stamped(b"_0000-00-00_00-00-00") || stamped(b"_00000000_000000")
 }
 
 /// Real bitrate of saved clips, from (bytes, seconds) pairs. With a bitrate limit the
@@ -127,7 +190,7 @@ pub fn thumb_path_for(save_path: &Path, video: &Path) -> PathBuf {
 
 /// Reads a video's duration with ffprobe. Returns 0.0 if it can't be read.
 pub fn probe_duration(path: &Path) -> f64 {
-    Command::new("ffprobe")
+    crate::utils::ffprobe_cmd()
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1"])
         .arg(path)
         .stdin(Stdio::null())
@@ -144,7 +207,7 @@ pub fn generate_thumbnail(video: &Path, out: &Path) -> bool {
     }
     // Grab a frame one second in; the very first frame of a replay is often black.
     for seek in ["1", "0"] {
-        let ok = Command::new("ffmpeg")
+        let ok = crate::utils::ffmpeg_cmd()
             .args(["-nostdin", "-loglevel", "error", "-ss", seek, "-i"])
             .arg(video)
             .args(["-vf", "scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:-1:-1", "-frames:v", "1", "-update", "1", "-y"])
@@ -344,5 +407,54 @@ mod tests {
         assert_eq!(format_duration(20.36), "0:20");
         assert_eq!(format_duration(125.0), "2:05");
         assert_eq!(format_duration(3725.0), "1:02:05");
+    }
+
+    #[test]
+    fn game_file_name_sanitizes_and_truncates() {
+        assert_eq!(game_file_name("Doom: Eternal", "2026.mp4"), "Doom Eternal_2026.mp4");
+        assert_eq!(game_file_name("Game/?*<>:|\"Test", "clip.mp4"), "Game Test_clip.mp4");
+        assert_eq!(game_file_name("  ..Game..  ", "clip.mp4"), "Game_clip.mp4");
+        assert_eq!(game_file_name("   ", "clip.mp4"), "Gameplay_clip.mp4");
+        assert_eq!(game_file_name("...", "clip.mp4"), "Gameplay_clip.mp4");
+        let long_name = "A".repeat(120);
+        let result = game_file_name(&long_name, "clip.mp4");
+        assert_eq!(result, format!("{}_clip.mp4", "A".repeat(100)));
+    }
+
+    #[test]
+    fn free_path_picks_first_available_number() {
+        let unique = format!(
+            "lapse_test_free_path_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let temp_dir = std::env::temp_dir().join(unique);
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let p1 = temp_dir.join("clip.mp4");
+        assert_eq!(free_path(p1.clone()), p1);
+
+        std::fs::write(&p1, b"test").unwrap();
+        let p2 = free_path(p1.clone());
+        assert_eq!(p2, temp_dir.join("clip_2.mp4"));
+
+        std::fs::write(&p2, b"test").unwrap();
+        let p3 = free_path(p1.clone());
+        assert_eq!(p3, temp_dir.join("clip_3.mp4"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn is_recording_identifies_stamped_names() {
+        assert!(is_recording("Doom Eternal_2026-11-15_22-31-57.mp4"));
+        assert!(is_recording("Cyberpunk 2077_20261115_223157.mp4"));
+        assert!(is_recording("Game_2026-11-15_22-31-57_label.mp4"));
+        assert!(!is_recording("clip_trimmed.mp4"));
+        assert!(!is_recording("Screenshot_2026-11-15_22-31-57.png"));
+        assert!(!is_recording("other_file.mp4"));
     }
 }
