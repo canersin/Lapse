@@ -5,7 +5,7 @@ use eframe::egui::{self, Margin, RichText, Stroke};
 use std::time::Duration;
 
 use crate::config::{Config, GameEntry};
-use crate::gui::components::dropdown::m3_dropdown;
+use crate::gui::components::dropdown::{m3_dropdown, m3_dropdown_sized};
 use crate::gui::components::number_field::{m3_number_field, m3_number_field_u32, m3_text_field, NumberOpts};
 use crate::hardware::game_detector::{running_apps, RunningApp};
 use crate::gui::components::button::{m3_small_button, m3_small_button_colored};
@@ -13,7 +13,7 @@ use crate::gui::components::button::m3_tonal_button;
 use crate::gui::components::card::m3_section_card;
 use crate::gui::components::icon::{m3_vector_icon, IconKind};
 use crate::gui::components::input::m3_setting_row;
-use crate::gui::components::motion::m3_switch;
+use crate::gui::components::motion::{m3_switch, m3_switch_labeled};
 use crate::gui::components::segmented::segmented;
 use crate::gui::i18n::t;
 use crate::gui::theme::{M3Shapes, MonetTheme};
@@ -64,7 +64,11 @@ fn render_capture_mode(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Confi
             segmented(ui, theme, "capture_mode", &mut config.capture_mode, &options, 130.0);
             ui.add_space(8.0);
             let text = if config.is_game_mode() {
-                t("The replay buffer starts when a game opens and stops on the desktop, so clips only contain gameplay. Lapse records the monitor the game is on. Alt-tabbing inside a game is still recorded: on Wayland a running buffer can't be paused.")
+                if cfg!(windows) {
+                    t("The replay buffer starts when a game opens and stops on the desktop, so clips only contain gameplay. Lapse records the monitor the game is on.")
+                } else {
+                    t("The replay buffer starts when a game opens and stops on the desktop, so clips only contain gameplay. Lapse records the monitor the game is on. Alt-tabbing inside a game is still recorded: on Wayland a running buffer can't be paused.")
+                }
             } else {
                 t("The replay buffer always runs, so you can also clip things on the desktop.")
             };
@@ -110,14 +114,28 @@ fn render_game_list(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) 
         t("Your games"),
         Some(t("Add games Lapse doesn't know, and give any game its own recording settings. Clips go into a folder with the game's name.")),
         |ui| {
+            m3_switch_labeled(
+                ui,
+                theme,
+                &mut config.auto_game_profiles,
+                t("Use each game's own settings automatically"),
+            );
+            ui.add_space(2.0);
+            ui.label(
+                RichText::new(t("When a game from this list opens, recording switches to its FPS, resolution and bitrate, and back when it closes. Switching restarts the replay buffer, so the seconds recorded just before are not kept."))
+                    .size(11.5)
+                    .color(theme.outline),
+            );
+            ui.add_space(10.0);
+
             let running = running_flags(ui, &config.games);
             let mut remove = None;
 
             if config.games.is_empty() {
                 ui.label(RichText::new(t("No games added yet. Open the game, then pick it below.")).size(12.5).color(theme.outline));
             } else {
-                egui::Grid::new("games_grid").num_columns(5).spacing([8.0, 8.0]).show(ui, |ui| {
-                    for h in ["Name", "FPS", "Bitrate", "", ""] {
+                egui::Grid::new("games_grid").num_columns(6).spacing([8.0, 8.0]).show(ui, |ui| {
+                    for h in ["Name", "FPS", "Resolution", "Bitrate", "", ""] {
                         ui.label(RichText::new(t(h)).size(11.5).strong().color(theme.on_surface_variant));
                     }
                     ui.end_row();
@@ -126,13 +144,34 @@ fn render_game_list(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) 
                         if !game.matcher.trim().is_empty() {
                             name.on_hover_text(format!("{} {}", t("Found by:"), game.matcher));
                         }
-                        let fps_opts = NumberOpts { suffix: " FPS", speed: 0.5, width: 90.0, zero_text: Some(t("Default")), ..Default::default() };
-                        m3_number_field_u32(ui, theme, ("game_fps", i), &mut game.fps, 0..=500, fps_opts);
-                        let mut mbps = game.bitrate_kbps as f64 / 1000.0;
-                        let rate_opts = NumberOpts { suffix: " Mbps", speed: 0.1, width: 100.0, zero_text: Some(t("Default")), ..Default::default() };
-                        if m3_number_field(ui, theme, ("game_mbps", i), &mut mbps, 0.0..=250.0, rate_opts) {
-                            game.bitrate_kbps = (mbps * 1000.0).round() as u32;
-                        }
+
+                        ui.add_enabled_ui(config.auto_game_profiles, |ui| {
+                            let fps_opts = NumberOpts { suffix: " FPS", speed: 0.5, width: 90.0, zero_text: Some(t("Default")), ..Default::default() };
+                            m3_number_field_u32(ui, theme, ("game_fps", i), &mut game.fps, 0..=500, fps_opts);
+                        });
+
+                        ui.add_enabled_ui(config.auto_game_profiles, |ui| {
+                            let res_label = if game.resolution.is_empty() {
+                                t("Default").to_string()
+                            } else {
+                                game.resolution.clone()
+                            };
+                            m3_dropdown_sized(ui, theme, ("game_res", i), res_label, 120.0, 28.0, |ui| {
+                                ui.selectable_value(&mut game.resolution, String::new(), t("Default"));
+                                for res in ["3840x2160", "2560x1440", "1920x1080", "1600x900", "1280x720"] {
+                                    ui.selectable_value(&mut game.resolution, res.to_string(), res);
+                                }
+                            });
+                        });
+
+                        ui.add_enabled_ui(config.auto_game_profiles, |ui| {
+                            let mut mbps = game.bitrate_kbps as f64 / 1000.0;
+                            let rate_opts = NumberOpts { suffix: " Mbps", speed: 0.1, width: 100.0, zero_text: Some(t("Default")), ..Default::default() };
+                            if m3_number_field(ui, theme, ("game_mbps", i), &mut mbps, 0.0..=250.0, rate_opts) {
+                                game.bitrate_kbps = (mbps * 1000.0).round() as u32;
+                            }
+                        });
+
                         let (color, label) = match (game.detect_word().is_empty(), running.get(i).copied().unwrap_or(false)) {
                             (true, _) => (theme.outline, t("No name")),
                             (false, true) => (theme.success, t("Running")),
@@ -162,7 +201,7 @@ fn render_game_list(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) 
             });
             ui.add_space(6.0);
             ui.label(
-                RichText::new(t("Open the game, then pick it from the list. Default FPS and bitrate use the Recording settings."))
+                RichText::new(t("Open the game, then pick it from the list. Default FPS, resolution and bitrate use the Recording settings."))
                     .size(12.0)
                     .color(theme.on_surface_variant),
             );
@@ -242,12 +281,26 @@ const DOTA_CARD: AutoClipCard = AutoClipCard {
     note: Some("Dota 2 also needs the launch option -gamestateintegration (Steam > Dota 2 > Properties > Launch options)."),
 };
 
+const LOL_CARD: AutoClipCard = AutoClipCard {
+    game: Game::Lol,
+    title: "League of Legends auto clips",
+    description: "Saves a clip by itself for double kills, triple kills, quadra kills, penta kills and aces.",
+    kills_title: "Multi-kill",
+    kills_description: "Clip from this multi-kill and up.",
+    options: [(2, "Double"), (3, "Triple"), (4, "Quadra"), (5, "Penta")],
+    length_description: "The clip starts this much before the first kill of the streak and runs until the fight is over.",
+    note: None,
+};
+
 fn render_auto_clips(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config, status: Option<&StatusResponse>) {
     let cs2_age = status.and_then(|s| s.cs2_data_age);
     let dota_age = status.and_then(|s| s.dota_data_age);
+    let lol_age = status.and_then(|s| s.lol_data_age);
     render_auto_clip(ui, theme, &CS2_CARD, &mut config.cs2_auto_clip, &mut config.cs2_min_kills, &mut config.cs2_lead_in, cs2_age, status);
     ui.add_space(14.0);
     render_auto_clip(ui, theme, &DOTA_CARD, &mut config.dota_auto_clip, &mut config.dota_min_kills, &mut config.dota_lead_in, dota_age, status);
+    ui.add_space(14.0);
+    render_auto_clip(ui, theme, &LOL_CARD, &mut config.lol_auto_clip, &mut config.lol_min_kills, &mut config.lol_lead_in, lol_age, status);
 }
 
 fn render_auto_clip(
@@ -262,7 +315,12 @@ fn render_auto_clip(
 ) {
     let game = card.game;
     m3_section_card(ui, theme, Some(IconKind::Bolt), t(card.title), Some(t(card.description)), |ui| {
-        m3_setting_row(ui, theme, t("Automatic clips"), t("Uses the game's official Game State Integration. No cheats, nothing is injected."), |ui| {
+        let auto_desc = if game == Game::Lol {
+            t("Uses the game's official Live Client Data API. No cheats, nothing is injected.")
+        } else {
+            t("Uses the game's official Game State Integration. No cheats, nothing is injected.")
+        };
+        m3_setting_row(ui, theme, t("Automatic clips"), auto_desc, |ui| {
             m3_switch(ui, theme, enabled);
         });
         if !*enabled {
@@ -281,42 +339,58 @@ fn render_auto_clip(
         }
 
         let msg_id = egui::Id::new(("lapse_auto_clip_msg", game.name()));
-        let installed = game.is_installed();
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.set_min_height(36.0);
-            if installed {
-                // Games only read the integration file when they start, so check that data really arrives.
-                let receiving = data_age.map(|age| age <= 60).unwrap_or(false);
-                let open = status.and_then(|s| s.game.as_deref()) == Some(game.name());
-                let (icon, color, text) = if receiving {
-                    (IconKind::Check, theme.success, t("Receiving live data. Clips will save automatically.").to_string())
-                } else if open {
-                    (IconKind::Warning, theme.error, format!("{} {}", game.name(), t("is open but sends no data. Close it and start it again to load the integration.")))
+        if game == Game::Lol {
+            let in_game = data_age.map(|age| age <= 10).unwrap_or(false)
+                || status.and_then(|s| s.game.as_deref()) == Some(game.name())
+                || crate::autoclip::lol::is_lol_running();
+            ui.horizontal(|ui| {
+                ui.set_min_height(36.0);
+                let (icon, color, text) = if in_game {
+                    (IconKind::Check, theme.success, t("In game"))
                 } else {
-                    (IconKind::Check, theme.on_surface_variant, t("Ready. Start the game and play; clips save by themselves.").to_string())
+                    (IconKind::Check, theme.on_surface_variant, t("Ready"))
                 };
                 m3_vector_icon(ui, icon, 16.0, color);
                 ui.label(RichText::new(text).size(12.5).color(theme.on_surface));
-            } else if game.cfg_dir().is_some() {
-                if m3_tonal_button(ui, theme, &format!("{} {}", t("Connect"), game.name())).clicked() {
-                    let msg = match game.install() {
-                        Ok(_) => t("Connected. Restart the game if it is open.").to_string(),
-                        Err(e) => format!("{}: {}", t("Could not connect"), e),
+            });
+        } else {
+            let installed = game.is_installed();
+            ui.horizontal(|ui| {
+                ui.set_min_height(36.0);
+                if installed {
+                    // Games only read the integration file when they start, so check that data really arrives.
+                    let receiving = data_age.map(|age| age <= 60).unwrap_or(false);
+                    let open = status.and_then(|s| s.game.as_deref()) == Some(game.name());
+                    let (icon, color, text) = if receiving {
+                        (IconKind::Check, theme.success, t("Receiving live data. Clips will save automatically.").to_string())
+                    } else if open {
+                        (IconKind::Warning, theme.error, format!("{} {}", game.name(), t("is open but sends no data. Close it and start it again to load the integration.")))
+                    } else {
+                        (IconKind::Check, theme.on_surface_variant, t("Ready. Start the game and play; clips save by themselves.").to_string())
                     };
-                    ui.data_mut(|d| d.insert_temp(msg_id, msg));
+                    m3_vector_icon(ui, icon, 16.0, color);
+                    ui.label(RichText::new(text).size(12.5).color(theme.on_surface));
+                } else if game.cfg_dir().is_some() {
+                    if m3_tonal_button(ui, theme, &format!("{} {}", t("Connect"), game.name())).clicked() {
+                        let msg = match game.install() {
+                            Ok(_) => t("Connected. Restart the game if it is open.").to_string(),
+                            Err(e) => format!("{}: {}", t("Could not connect"), e),
+                        };
+                        ui.data_mut(|d| d.insert_temp(msg_id, msg));
+                    }
+                    ui.label(RichText::new(t("Adds a small config file to the game folder.")).size(12.0).color(theme.on_surface_variant));
+                } else {
+                    m3_vector_icon(ui, IconKind::Warning, 16.0, theme.outline);
+                    ui.label(RichText::new(format!("{} {}", game.name(), t("was not found in your Steam libraries."))).size(12.5).color(theme.outline));
                 }
-                ui.label(RichText::new(t("Adds a small config file to the game folder.")).size(12.0).color(theme.on_surface_variant));
-            } else {
-                m3_vector_icon(ui, IconKind::Warning, 16.0, theme.outline);
-                ui.label(RichText::new(format!("{} {}", game.name(), t("was not found in your Steam libraries."))).size(12.5).color(theme.outline));
+            });
+            if installed && m3_small_button(ui, theme, t("Disconnect")).clicked() {
+                game.uninstall();
             }
-        });
-        if installed && m3_small_button(ui, theme, t("Disconnect")).clicked() {
-            game.uninstall();
-        }
-        if let Some(msg) = ui.data(|d| d.get_temp::<String>(msg_id)) {
-            ui.label(RichText::new(msg).size(12.0).color(theme.primary));
+            if let Some(msg) = ui.data(|d| d.get_temp::<String>(msg_id)) {
+                ui.label(RichText::new(msg).size(12.0).color(theme.primary));
+            }
         }
     });
 }

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="cosmic_toplevel_info_unstable_v1">
+  <!-- The part of COSMIC's protocol Lapse uses (version 2). -->
+  <interface name="zcosmic_toplevel_info_v1" version="2">
+    <request name="stop"/>
+    <request name="get_cosmic_toplevel" since="2">
+      <arg name="cosmic_toplevel" type="new_id" interface="zcosmic_toplevel_handle_v1"/>
+      <arg name="foreign_toplevel" type="object" interface="ext_foreign_toplevel_handle_v1"/>
+    </request>
+    <event name="toplevel">
+      <arg name="toplevel" type="new_id" interface="zcosmic_toplevel_handle_v1"/>
+    </event>
+    <event name="finished"/>
+    <event name="done" since="2"/>
+  </interface>
+  <interface name="zcosmic_toplevel_handle_v1" version="2">
+    <request name="destroy" type="destructor"/>
+    <event name="closed"/>
+    <event name="done"/>
+    <event name="title">
+      <arg name="title" type="string"/>
+    </event>
+    <event name="app_id">
+      <arg name="app_id" type="string"/>
+    </event>
+    <event name="output_enter">
+      <arg name="output" type="object" interface="wl_output"/>
+    </event>
+    <event name="output_leave">
+      <arg name="output" type="object" interface="wl_output"/>
+    </event>
+    <event name="workspace_enter">
+      <arg name="workspace" type="object" interface="zcosmic_workspace_handle_v1"/>
+    </event>
+    <event name="workspace_leave">
+      <arg name="workspace" type="object" interface="zcosmic_workspace_handle_v1"/>
+    </event>
+    <event name="state">
+      <arg name="state" type="array"/>
+    </event>
+    <event name="geometry" since="2">
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+  </interface>
+  <!-- Never bound; only named by the events above. -->
+  <interface name="zcosmic_workspace_handle_v1" version="1"/>
+</protocol>

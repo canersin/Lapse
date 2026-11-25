@@ -7,6 +7,7 @@ pub struct MonitorDevice {
     pub card_name: String,
 }
 
+#[cfg(not(windows))]
 pub fn get_monitors() -> Vec<MonitorDevice> {
     let mut monitors = Vec::new();
 
@@ -79,6 +80,26 @@ pub fn get_monitors() -> Vec<MonitorDevice> {
             .cmp(&b.card_name)
             .then_with(|| a.name.cmp(&b.name))
     });
+    monitors
+}
+
+#[cfg(windows)]
+pub fn get_monitors() -> Vec<MonitorDevice> {
+    let mut monitors = Vec::new();
+    if let Ok(list) = windows_capture::monitor::Monitor::enumerate() {
+        for m in list {
+            let name = m.device_name().unwrap_or_default();
+            let width = m.width().unwrap_or(0);
+            let height = m.height().unwrap_or(0);
+            let resolution = format!("{}x{}", width, height);
+            let card_name = m.name().unwrap_or_else(|_| "card0".into());
+            monitors.push(MonitorDevice {
+                name,
+                resolution,
+                card_name,
+            });
+        }
+    }
     monitors
 }
 
@@ -170,13 +191,22 @@ pub fn find_monitor_at(x: i32, y: i32) -> Option<String> {
     None
 }
 
-pub fn get_game_or_primary_monitor(configured_monitor: &str) -> String {
-    if !configured_monitor.is_empty()
-        && configured_monitor != "auto"
-        && configured_monitor != "focused"
-        && configured_monitor != "screen"
-    {
-        return configured_monitor.to_string();
-    }
-    "focused".to_string()
+#[cfg(not(windows))]
+pub fn connected_count() -> usize {
+    let Ok(dir) = std::fs::read_dir("/sys/class/drm") else { return 0 };
+    dir.flatten().filter(|e| std::fs::read_to_string(e.path().join("status")).is_ok_and(|s| s.trim() == "connected")).count()
+}
+
+/// False only when the system lists the connector and nothing is plugged into it. Names
+/// it doesn't know ("focused", some X11 drivers' own) count as connected.
+#[cfg(not(windows))]
+pub fn connector_connected(name: &str) -> bool {
+    let Ok(dir) = std::fs::read_dir("/sys/class/drm") else { return true };
+    let states: Vec<bool> = dir
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().split_once('-').is_some_and(|(_, connector)| connector == name))
+        .filter_map(|e| std::fs::read_to_string(e.path().join("status")).ok())
+        .map(|status| status.trim() != "disconnected")
+        .collect();
+    states.is_empty() || states.contains(&true)
 }
