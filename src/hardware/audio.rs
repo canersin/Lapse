@@ -1,3 +1,4 @@
+#[cfg(not(windows))]
 use std::process::Command;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -6,6 +7,7 @@ pub struct AudioDevice {
     pub description: String,
 }
 
+#[cfg(not(windows))]
 pub fn get_audio_devices() -> (Vec<AudioDevice>, Vec<AudioDevice>) {
     let output = match Command::new("gpu-screen-recorder").arg("--list-audio-devices").output() {
         Ok(out) => out,
@@ -31,5 +33,37 @@ pub fn get_audio_devices() -> (Vec<AudioDevice>, Vec<AudioDevice>) {
         }
     }
     
+    (outputs, inputs)
+}
+
+#[cfg(windows)]
+pub fn get_audio_devices() -> (Vec<AudioDevice>, Vec<AudioDevice>) {
+    let _ = wasapi::initialize_mta();
+    let enumerator = match wasapi::DeviceEnumerator::new() {
+        Ok(e) => e,
+        Err(_) => return (vec![], vec![]),
+    };
+
+    let get_devices_for_dir = |direction: wasapi::Direction| -> Vec<AudioDevice> {
+        let mut list = Vec::new();
+        if let Ok(coll) = enumerator.get_device_collection(direction) {
+            if let Ok(count) = coll.get_nbr_devices() {
+                for i in 0..count {
+                    if let Ok(dev) = coll.get_device_at_index(i) {
+                        if let Ok(name) = dev.get_friendlyname() {
+                            list.push(AudioDevice {
+                                name: name.clone(),
+                                description: name,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        list
+    };
+
+    let outputs = get_devices_for_dir(wasapi::Direction::Render);
+    let inputs = get_devices_for_dir(wasapi::Direction::Capture);
     (outputs, inputs)
 }
