@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prints the Gentoo ebuild for a version, with the crate list from Cargo.lock.
 
-    python3 packaging/gentoo/ebuild.py 2.2.1 > lapse-2.2.1.ebuild
+    python3 packaging/gentoo/ebuild.py 2.3.0 > lapse-2.3.0.ebuild
 
 packaging/build-release.sh gentoo writes it to dist/gentoo/media-video/lapse/.
 """
@@ -55,7 +55,6 @@ RDEPEND="
 \tx11-libs/libXrandr
 \tx11-libs/libXi
 \tmedia-video/ffmpeg
-\tnet-misc/curl
 "
 BDEPEND="virtual/pkgconfig"
 
@@ -74,7 +73,6 @@ src_install() {{
 pkg_postinst() {{
 \txdg_pkg_postinst
 \toptfeature "recording (required, from the GURU overlay)" media-video/gpu-screen-recorder
-\toptfeature "notifications with buttons" x11-libs/libnotify
 \toptfeature "file dialogs" sys-apps/xdg-desktop-portal gnome-extra/zenity
 }}
 """

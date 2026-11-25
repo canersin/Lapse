@@ -13,8 +13,6 @@
   libxrandr,
   libxi,
   ffmpeg,
-  curl,
-  libnotify,
 }:
 
 let
@@ -58,13 +56,13 @@ rustPlatform.buildRustPackage {
 
   # The real binary keeps the name "lapse": Lapse finds its own service by it.
   # gpu-screen-recorder comes from the system (on NixOS with the capability it
-  # needs, see programs.gpu-screen-recorder); ffmpeg and curl are added after it.
+  # needs, see programs.gpu-screen-recorder); ffmpeg is added after it.
   postInstall = ''
     mkdir -p $out/libexec/lapse
     mv $out/bin/Lapse $out/libexec/lapse/lapse
     makeWrapper $out/libexec/lapse/lapse $out/bin/lapse \
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath runtimeLibs} \
-      --suffix PATH : ${lib.makeBinPath [ ffmpeg curl libnotify ]}
+      --suffix PATH : ${lib.makeBinPath [ ffmpeg ]}
 
     install -Dm644 assets/lapse.desktop $out/share/applications/lapse.desktop
     install -Dm644 assets/icon.png $out/share/icons/hicolor/512x512/apps/lapse.png

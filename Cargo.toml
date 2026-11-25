@@ -1,6 +1,6 @@
 [package]
 name = "Lapse"
-version = "2.2.1"
+version = "2.3.0"
 edition = "2021"
 authors = ["Ersin Can Karaca <canersinkaraca@gmail.com>"]
 description = "Modern and lightweight game clipper for Linux"
@@ -15,16 +15,66 @@ global-hotkey = "0.5"
 eframe = "0.26" 
 anyhow = "1.0"
 libc = "0.2"
-zbus = "5"
 directories = "5.0"
-signal-hook = "0.3" 
 rfd = "0.17.2"
+libloading = "0.8"
+raw-window-handle = "0.6"
 rodio = { version = "0.22.2", features = ["playback"] }
+cpal = "0.17.3"
 image = "0.24"
+ab_glyph = "0.2"
 chrono = "0.4.38"
 open = "5.1"
+ureq = "2.12"
+ring = "0.17"
+trash = "5"
+arboard = { version = "3.6", features = ["wayland-data-control"] }
 egui_extras = { version = "0.26", features = ["all_loaders"] }
+nnnoiseless = { version = "0.5", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5"
+signal-hook = "0.3"
+x11rb = { version = "0.13", features = ["randr"] }
+wayland-client = "0.31"
+wayland-backend = "0.3"
+wayland-scanner = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 ksni = { version = "0.3.7", default-features = false, features = ["async-io", "blocking"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_Performance",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Graphics_Gdi",
+    "Win32_System_SystemInformation",
+] }
+windows = { version = "0.61", features = [
+    "Win32_Media_MediaFoundation",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_UI_Shell",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Com",
+    "Graphics_Capture",
+    "Security_Authorization_AppCapabilityAccess",
+    "Storage_Streams",
+] }
+windows-capture = { path = "vendor/windows-capture" }
+wasapi = "0.27"
+mp4 = "0.14"
 
 [package.metadata.deb]
 maintainer = "Ersin Can Karaca <canersinkaraca@gmail.com>"

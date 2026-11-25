@@ -26,9 +26,8 @@ Requires:       libdbus-1.so.3()(64bit)
 # Programs, by path: the package names differ between Fedora and openSUSE.
 Requires:       /usr/bin/ffmpeg
 Requires:       /usr/bin/ffprobe
-Requires:       /usr/bin/curl
 Recommends:     gpu-screen-recorder
-Recommends:     /usr/bin/notify-send
+Recommends:     mpv
 
 %description
 Lapse keeps the last minutes of your screen in memory with GPU Screen Recorder.

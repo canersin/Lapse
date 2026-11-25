@@ -3,8 +3,8 @@ Version: @VERSION@-1
 Architecture: amd64
 Maintainer: Ersin Can Karaca <canersinkaraca@gmail.com>
 Installed-Size: @SIZE@
-Depends: libc6 (>= 2.35), libgcc-s1, libasound2 | libasound2t64, libegl1, libgl1, libwayland-client0, libwayland-egl1, libxkbcommon0, libxkbcommon-x11-0, libx11-6, libxcursor1, libxrandr2, libxi6, libdbus-1-3, ffmpeg, curl
-Recommends: gpu-screen-recorder, libnotify-bin, xdg-desktop-portal
+Depends: libc6 (>= 2.35), libgcc-s1, libasound2 | libasound2t64, libegl1, libgl1, libwayland-client0, libwayland-egl1, libxkbcommon0, libxkbcommon-x11-0, libx11-6, libxcursor1, libxrandr2, libxi6, libdbus-1-3, ffmpeg
+Recommends: gpu-screen-recorder, xdg-desktop-portal, mpv
 Suggests: zenity
 Section: video
 Priority: optional
