@@ -11,14 +11,16 @@ use crate::gui::views::player_view::format_file_size;
 fn copy_to_clipboard(text: &str) {
     let t = text.to_string();
     std::thread::spawn(move || {
-        let _ = Command::new("wl-copy").arg(&t).status().or_else(|_| {
-            Command::new("xclip").args(["-selection", "clipboard"]).stdin(Stdio::piped()).spawn().and_then(|mut c| {
-                if let Some(mut sin) = c.stdin.take() {
-                    let _ = sin.write_all(t.as_bytes());
-                }
-                c.wait()
-            })
-        });
+        let Ok(mut clipboard) = arboard::Clipboard::new() else { return };
+        // On Linux the copied text lives in this process: keep serving it until
+        // something else is copied.
+        #[cfg(target_os = "linux")]
+        {
+            use arboard::SetExtLinux;
+            let _ = clipboard.set().wait().text(t);
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = clipboard.set_text(t);
     });
 }
 
@@ -77,7 +79,7 @@ fn prepare_faststart_video(original_path: &Path, session_id: u64) -> Option<Path
     }
 
     let tmp_path = std::env::temp_dir().join(format!("lapse_faststart_{}.mp4", session_id));
-    let status = Command::new("ffmpeg")
+    let status = crate::utils::ffmpeg_cmd()
         .args([
             "-nostdin",
             "-loglevel",
@@ -191,13 +193,12 @@ pub fn stop_live_share() {
     SERVER_RUNNING.store(false, Ordering::SeqCst);
 
     let old_temp = FASTSTART_TEMP_FILE.lock().ok().and_then(|mut g| g.take());
+    let mut child = TUNNEL_PROCESS.lock().ok().and_then(|mut g| g.take());
 
     std::thread::spawn(move || {
-        if let Ok(mut lock) = TUNNEL_PROCESS.lock() {
-            if let Some(mut child) = lock.take() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
+        if let Some(ref mut c) = child {
+            let _ = c.kill();
+            let _ = c.wait();
         }
         if let Some(tmp) = old_temp {
             let _ = std::fs::remove_file(tmp);
@@ -680,18 +681,26 @@ fn contains_ipv4_pattern(url: &str) -> bool {
 
 /// Lapse's own copy of cloudflared, downloaded the first time a link is shared.
 fn own_cloudflared() -> Option<PathBuf> {
-    Some(directories::ProjectDirs::from("com", "lapse", "lapse")?.data_dir().join("bin/cloudflared"))
+    let name = if cfg!(windows) { "cloudflared.exe" } else { "cloudflared" };
+    Some(directories::ProjectDirs::from("com", "lapse", "lapse")?.data_dir().join("bin").join(name))
 }
 
 /// cloudflared from the system (package manager, PATH) or Lapse's own copy.
 fn find_cloudflared() -> Option<PathBuf> {
+    let name = if cfg!(windows) { "cloudflared.exe" } else { "cloudflared" };
     let path_dirs = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
-    let home_bin = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/bin"));
+    #[cfg(unix)]
+    let extra_dirs: Vec<PathBuf> = {
+        let home_bin = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/bin"));
+        home_bin.into_iter().chain(["/usr/bin".into(), "/usr/local/bin".into()]).collect()
+    };
+    #[cfg(not(unix))]
+    let extra_dirs: Vec<PathBuf> = Vec::new();
+
     path_dirs
         .into_iter()
-        .chain(home_bin)
-        .chain(["/usr/bin".into(), "/usr/local/bin".into()])
-        .map(|d| d.join("cloudflared"))
+        .chain(extra_dirs)
+        .map(|d| d.join(name))
         .chain(own_cloudflared())
         .find(|p| p.is_file())
 }
@@ -705,48 +714,43 @@ fn set_status(message: &str) {
 /// Downloads the official cloudflared release from GitHub into Lapse's data folder and
 /// checks it against the SHA-256 GitHub publishes for the file.
 fn download_cloudflared() -> Result<PathBuf, String> {
-    let arch = match std::env::consts::ARCH {
-        "x86_64" => "amd64",
-        "aarch64" => "arm64",
-        "arm" => "arm",
-        "x86" => "386",
-        other => return Err(format!("no cloudflared build for {}", other)),
+    let (os_name, arch, ext) = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("windows", "x86_64") => ("windows", "amd64", ".exe"),
+        ("windows", "x86") => ("windows", "386", ".exe"),
+        ("windows", other) => return Err(format!("no cloudflared build for windows-{}", other)),
+        ("linux", "x86_64") => ("linux", "amd64", ""),
+        ("linux", "aarch64") => ("linux", "arm64", ""),
+        ("linux", "arm") => ("linux", "arm", ""),
+        ("linux", "x86") => ("linux", "386", ""),
+        (os, arch) => return Err(format!("no cloudflared build for {}-{}", os, arch)),
     };
     let target = own_cloudflared().ok_or("no data folder")?;
-    let asset_name = format!("cloudflared-linux-{}", arch);
+    let asset_name = format!("cloudflared-{}-{}{}", os_name, arch, ext);
     set_status("Getting cloudflared for share links (first time only, about 40 MB)...");
 
-    let release = Command::new("curl")
-        .args(["-sfL", "--max-time", "20", "-H", "User-Agent: Lapse-App", "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    let json: serde_json::Value = serde_json::from_slice(&release.stdout).map_err(|_| "GitHub didn't answer".to_string())?;
+    let json = crate::http::get_json("https://api.github.com/repos/cloudflare/cloudflared/releases/latest", &[], 20)
+        .map_err(|_| "GitHub didn't answer".to_string())?;
     let asset = json["assets"]
         .as_array()
         .and_then(|a| a.iter().find(|x| x["name"] == asset_name.as_str()))
-        .ok_or("the release has no Linux build")?;
+        .ok_or("the release has no compatible build")?;
     let url = asset["browser_download_url"].as_str().ok_or("no download link")?;
     let digest = asset["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).ok_or("no checksum published")?.to_lowercase();
 
     std::fs::create_dir_all(target.parent().ok_or("bad path")?).map_err(|e| e.to_string())?;
     let part = target.with_extension("part");
-    let ok = Command::new("curl")
-        .args(["-sfL", "--connect-timeout", "10", "--max-time", "600", url, "-o"])
-        .arg(&part)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
-        let _ = std::fs::remove_file(&part);
-        return Err("download failed".into());
-    }
-
-    let sum = Command::new("sha256sum").arg(&part).output().map_err(|e| e.to_string())?;
-    let got = String::from_utf8_lossy(&sum.stdout).split_whitespace().next().unwrap_or("").to_lowercase();
+    let got = match crate::http::download(url, &part, 600) {
+        Ok(sum) => sum,
+        Err(e) => {
+            let _ = std::fs::remove_file(&part);
+            return Err(format!("download failed: {}", e));
+        }
+    };
     if got != digest {
         let _ = std::fs::remove_file(&part);
         return Err("the download didn't match its checksum".into());
     }
+    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
@@ -767,8 +771,8 @@ fn try_cloudflared_tunnel(cf_bin: &Path, port: u16) -> Option<String> {
     set_status("Opening the Cloudflare tunnel...");
     let local_url = format!("http://127.0.0.1:{}", port);
 
-    let mut child = Command::new(cf_bin)
-        .args([
+    let mut cmd = Command::new(cf_bin);
+    cmd.args([
             "tunnel",
             "--no-autoupdate",
             "--protocol",
@@ -777,9 +781,9 @@ fn try_cloudflared_tunnel(cf_bin: &Path, port: u16) -> Option<String> {
             &local_url,
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .ok()?;
+        .stderr(Stdio::piped());
+    crate::utils::no_window(&mut cmd);
+    let mut child = cmd.spawn().ok()?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -798,7 +802,7 @@ fn try_cloudflared_tunnel(cf_bin: &Path, port: u16) -> Option<String> {
         let tx_out = tx.clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 let _ = tx_out.send(line);
             }
         });
@@ -808,7 +812,7 @@ fn try_cloudflared_tunnel(cf_bin: &Path, port: u16) -> Option<String> {
         let tx_err = tx;
         std::thread::spawn(move || {
             let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 let _ = tx_err.send(line);
             }
         });
@@ -873,12 +877,18 @@ fn run_tunnel_client(port: u16, _filename: String) {
             .unwrap_or(42137);
         let custom_serveo_str = format!("lapse-{:06x}:80:127.0.0.1:{}", stamp, port);
 
+        let known_hosts_arg = if cfg!(windows) {
+            "UserKnownHostsFile=NUL"
+        } else {
+            "UserKnownHostsFile=/dev/null"
+        };
+
         let candidates: Vec<(&str, Vec<&str>)> = vec![
             ("nokey@localhost.run", vec![
                 "-n",
                 "-o", "ConnectTimeout=5",
                 "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", known_hosts_arg,
                 "-o", "ExitOnForwardFailure=yes",
                 "-o", "Compression=no",
                 "-o", "IPQoS=throughput",
@@ -890,7 +900,7 @@ fn run_tunnel_client(port: u16, _filename: String) {
                 "-n",
                 "-o", "ConnectTimeout=5",
                 "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", known_hosts_arg,
                 "-o", "ExitOnForwardFailure=yes",
                 "-o", "Compression=no",
                 "-o", "IPQoS=throughput",
@@ -905,12 +915,12 @@ fn run_tunnel_client(port: u16, _filename: String) {
                 break;
             }
 
-            let mut child = match Command::new("ssh")
-                .args(&args)
+            let mut cmd = Command::new("ssh");
+            cmd.args(&args)
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-            {
+                .stderr(Stdio::piped());
+            crate::utils::no_window(&mut cmd);
+            let mut child = match cmd.spawn() {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -932,7 +942,7 @@ fn run_tunnel_client(port: u16, _filename: String) {
                 let tx_out = tx.clone();
                 std::thread::spawn(move || {
                     let reader = BufReader::new(out);
-                    for line in reader.lines().flatten() {
+                    for line in reader.lines().map_while(Result::ok) {
                         let _ = tx_out.send(line);
                     }
                 });
@@ -942,7 +952,7 @@ fn run_tunnel_client(port: u16, _filename: String) {
                 let tx_err = tx;
                 std::thread::spawn(move || {
                     let reader = BufReader::new(err);
-                    for line in reader.lines().flatten() {
+                    for line in reader.lines().map_while(Result::ok) {
                         let _ = tx_err.send(line);
                     }
                 });
@@ -1016,8 +1026,24 @@ mod cloudflared_tests {
     #[ignore]
     fn cloudflared_download() {
         let path = super::download_cloudflared().unwrap();
-        let out = std::process::Command::new(&path).arg("--version").output().unwrap();
+        let mut cmd = std::process::Command::new(&path);
+        cmd.arg("--version");
+        crate::utils::no_window(&mut cmd);
+        let out = cmd.output().unwrap();
         println!("{}", String::from_utf8_lossy(&out.stdout));
         assert!(out.status.success());
+    }
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    /// Needs a display (X11 or Wayland): `cargo test copies_link -- --ignored`.
+    #[test]
+    #[ignore]
+    fn copies_link() {
+        super::copy_to_clipboard("https://example.trycloudflare.com/clip");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let text = arboard::Clipboard::new().unwrap().get_text().unwrap();
+        assert_eq!(text, "https://example.trycloudflare.com/clip");
     }
 }

@@ -1,7 +1,6 @@
 //! Sends a clip to a Discord channel through a webhook (curl, in the background).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 
 /// Discord's upload limit without Nitro.
@@ -57,25 +56,11 @@ pub fn send_as(key: PathBuf, file: PathBuf, webhook: String) {
     set(&key, SendState::Sending);
     let path = file;
     std::thread::spawn(move || {
-        let result = Command::new("curl")
-            .args(["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "300", "-F"])
-            .arg(format!("file=@\"{}\"", path.display()))
-            .arg(webhook.trim())
-            .output();
-        let state = match result {
-            Ok(out) => {
-                let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if code.starts_with('2') {
-                    SendState::Sent
-                } else if code == "413" {
-                    SendState::Failed("the file is too big for Discord".into())
-                } else if code == "000" {
-                    SendState::Failed(String::from_utf8_lossy(&out.stderr).trim().to_string())
-                } else {
-                    SendState::Failed(format!("Discord answered {}", code))
-                }
-            }
-            Err(e) => SendState::Failed(format!("curl: {}", e)),
+        let state = match crate::http::post_file(webhook.trim(), "file", &path, 300) {
+            Ok(()) => SendState::Sent,
+            Err(crate::http::Error::Status(413)) => SendState::Failed("the file is too big for Discord".into()),
+            Err(crate::http::Error::Status(code)) => SendState::Failed(format!("Discord answered {}", code)),
+            Err(e) => SendState::Failed(e.to_string()),
         };
         set(&key, state);
     });
@@ -98,7 +83,8 @@ pub fn send_or_shrink(path: PathBuf, webhook: String, duration_secs: f64) {
         preset: ExportPreset::Discord,
         audio: AudioMix::default(),
         output,
-        crop_x: 0.5,
+        crop: None,
+        overlays: Vec::new(),
     });
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_millis(300));
@@ -116,20 +102,9 @@ pub fn post_message(webhook: &str, content: &str) -> Result<(), String> {
     if !is_webhook(webhook) {
         return Err("the webhook link doesn't look like a Discord webhook".into());
     }
-    let body = serde_json::json!({ "content": content }).to_string();
-    let out = Command::new("curl")
-        .args(["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "30", "-H", "Content-Type: application/json", "-d"])
-        .arg(body)
-        .arg(webhook.trim())
-        .output()
-        .map_err(|e| format!("curl: {}", e))?;
-    let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if code.starts_with('2') {
-        Ok(())
-    } else if code == "000" {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    } else {
-        Err(format!("Discord answered {}", code))
-    }
+    crate::http::post_json(webhook.trim(), &serde_json::json!({ "content": content }), 30).map_err(|e| match e {
+        crate::http::Error::Status(code) => format!("Discord answered {}", code),
+        e => e.to_string(),
+    })
 }
 

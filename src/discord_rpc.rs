@@ -5,6 +5,7 @@
 //! opcode and a u32 length (little endian) followed by JSON. No network, no token.
 
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -13,6 +14,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 
 use crate::recorder::{Recorder, RecordingMode};
+
+#[cfg(unix)]
+type IpcStream = UnixStream;
+#[cfg(windows)]
+type IpcStream = std::fs::File;
 
 /// The "Lapse" application on the Discord developer portal. Discord titles the card
 /// with the application's name, so games Discord knows use their own application
@@ -44,6 +50,7 @@ struct Presence {
 }
 
 /// Places Discord puts its socket: native, Flatpak, Snap and Vesktop.
+#[cfg(unix)]
 fn socket_candidates() -> Vec<PathBuf> {
     let mut bases: Vec<PathBuf> = Vec::new();
     for var in ["XDG_RUNTIME_DIR", "TMPDIR"] {
@@ -71,7 +78,7 @@ fn socket_candidates() -> Vec<PathBuf> {
     out
 }
 
-fn write_frame(stream: &mut UnixStream, op: u32, body: &Value) -> std::io::Result<()> {
+fn write_frame(stream: &mut (impl Write + ?Sized), op: u32, body: &Value) -> std::io::Result<()> {
     let data = body.to_string();
     let mut frame = Vec::with_capacity(8 + data.len());
     frame.extend_from_slice(&op.to_le_bytes());
@@ -80,7 +87,7 @@ fn write_frame(stream: &mut UnixStream, op: u32, body: &Value) -> std::io::Resul
     stream.write_all(&frame)
 }
 
-fn read_frame(stream: &mut UnixStream) -> std::io::Result<(u32, Value)> {
+fn read_frame(stream: &mut (impl Read + ?Sized)) -> std::io::Result<(u32, Value)> {
     let mut header = [0u8; 8];
     stream.read_exact(&mut header)?;
     let op = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
@@ -91,7 +98,8 @@ fn read_frame(stream: &mut UnixStream) -> std::io::Result<(u32, Value)> {
 }
 
 /// Connects to the first running Discord and identifies as Lapse.
-fn connect(client_id: &str) -> Option<UnixStream> {
+#[cfg(unix)]
+fn connect(client_id: &str) -> Option<IpcStream> {
     for path in socket_candidates() {
         let Ok(mut stream) = UnixStream::connect(&path) else { continue };
         let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
@@ -107,8 +115,28 @@ fn connect(client_id: &str) -> Option<UnixStream> {
     None
 }
 
+#[cfg(windows)]
+fn connect(client_id: &str) -> Option<IpcStream> {
+    for i in 0..10 {
+        let pipe_name = format!(r"\\.\pipe\discord-ipc-{}", i);
+        let Ok(mut file) = std::fs::OpenOptions::new().read(true).write(true).open(&pipe_name) else {
+            continue;
+        };
+        if write_frame(&mut file, OP_HANDSHAKE, &json!({ "v": 1, "client_id": client_id })).is_err() {
+            continue;
+        }
+        match read_frame(&mut file) {
+            Ok((OP_FRAME, _)) => return Some(file),
+            Ok((op, body)) => eprintln!("Lapse: Discord refused the presence (op {}): {}", op, body),
+            Err(_) => {}
+        }
+    }
+    None
+}
+
 /// True while Discord still holds the connection (it closes it when it quits).
-fn still_open(stream: &mut UnixStream) -> bool {
+#[cfg(unix)]
+fn still_open(stream: &mut IpcStream) -> bool {
     use std::os::fd::AsRawFd;
     let mut byte = 0u8;
     // Peek without blocking: 0 means Discord hung up, EAGAIN means it's quiet but there.
@@ -116,6 +144,33 @@ fn still_open(stream: &mut UnixStream) -> bool {
         libc::recv(stream.as_raw_fd(), &mut byte as *mut u8 as *mut libc::c_void, 1, libc::MSG_PEEK | libc::MSG_DONTWAIT)
     };
     n > 0 || (n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::WouldBlock)
+}
+
+#[cfg(windows)]
+fn still_open(stream: &mut IpcStream) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    extern "system" {
+        fn PeekNamedPipe(
+            hNamedPipe: *mut std::ffi::c_void,
+            lpBuffer: *mut std::ffi::c_void,
+            nBufferSize: u32,
+            lpBytesRead: *mut u32,
+            lpTotalBytesAvail: *mut u32,
+            lpBytesLeftThisMessage: *mut u32,
+        ) -> i32;
+    }
+    let mut avail: u32 = 0;
+    let ok = unsafe {
+        PeekNamedPipe(
+            stream.as_raw_handle() as *mut _,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            &mut avail,
+            std::ptr::null_mut(),
+        )
+    };
+    ok != 0
 }
 
 /// Cover art of a Steam game. Newer games keep their art under hashed paths, so
@@ -130,12 +185,8 @@ fn store_cover(app_id: u32) -> Option<String> {
         "context": { "language": "english", "country_code": "US" },
         "data_request": { "include_assets": true },
     });
-    let out = std::process::Command::new("curl")
-        .args(["-sfG", "--max-time", "6", "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/", "--data-urlencode"])
-        .arg(format!("input_json={}", query))
-        .output()
-        .ok()?;
-    let body: Value = serde_json::from_slice(&out.stdout).ok()?;
+    let input = query.to_string();
+    let body = crate::http::get_json("https://api.steampowered.com/IStoreBrowseService/GetItems/v1/", &[("input_json", &input)], 6).ok()?;
     cover_from_store(&body)
 }
 
@@ -181,10 +232,8 @@ fn discord_games() -> Option<String> {
         .map(|t| t.elapsed().unwrap_or_default() < Duration::from_secs(7 * 24 * 3600))
         .unwrap_or(false);
     if !fresh {
-        let out = std::process::Command::new("curl")
-            .args(["-sf", "--max-time", "30", "https://discord.com/api/v9/applications/detectable"])
-            .output();
-        if let Some(list) = out.ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()).and_then(|v| v.as_array().cloned()) {
+        let out = crate::http::get_json("https://discord.com/api/v9/applications/detectable", &[], 30);
+        if let Some(list) = out.ok().and_then(|v| v.as_array().cloned()) {
             let _ = std::fs::create_dir_all(&dir);
             let _ = std::fs::write(&path, games_table(&list));
         }
@@ -226,13 +275,12 @@ fn discord_game(game: &str) -> Option<DiscordGame> {
 
 /// A Steam game with exactly this name (for games installed outside Steam).
 fn steam_search(game: &str) -> Option<u32> {
-    let out = std::process::Command::new("curl")
-        .args(["-sfG", "--max-time", "6", "https://store.steampowered.com/api/storesearch/", "--data-urlencode"])
-        .arg(format!("term={}", game))
-        .args(["-d", "cc=US", "-d", "l=english"])
-        .output()
-        .ok()?;
-    let body: Value = serde_json::from_slice(&out.stdout).ok()?;
+    let body = crate::http::get_json(
+        "https://store.steampowered.com/api/storesearch/",
+        &[("term", game), ("cc", "US"), ("l", "english")],
+        6,
+    )
+    .ok()?;
     let want = normalize(game);
     body["items"].as_array()?.iter().find(|i| i["name"].as_str().map(normalize).as_deref() == Some(want.as_str()))?["id"].as_u64().map(|id| id as u32)
 }
@@ -272,7 +320,7 @@ fn activity(p: &Presence, started: u64) -> Value {
     activity
 }
 
-fn send(stream: &mut UnixStream, activity: Value) -> std::io::Result<()> {
+fn send(stream: &mut IpcStream, activity: Value) -> std::io::Result<()> {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     write_frame(
         stream,
@@ -315,7 +363,7 @@ fn wanted(recorder: &Arc<Mutex<Recorder>>) -> Option<Presence> {
 pub fn start(recorder: Arc<Mutex<Recorder>>) {
     std::thread::spawn(move || {
         // The connection and the application it speaks as.
-        let mut conn: Option<(UnixStream, String)> = None;
+        let mut conn: Option<(IpcStream, String)> = None;
         let mut shown: Option<Presence> = None;
         let mut started: Option<(String, u64)> = None;
         let mut clips_at_start = 0u64;
@@ -445,9 +493,10 @@ mod tests {
 
     #[test]
     fn frames_round_trip() {
-        let (mut a, mut b) = UnixStream::pair().unwrap();
-        write_frame(&mut a, OP_FRAME, &json!({ "x": 1 })).unwrap();
-        let (op, body) = read_frame(&mut b).unwrap();
+        let mut cur = std::io::Cursor::new(Vec::new());
+        write_frame(&mut cur, OP_FRAME, &json!({ "x": 1 })).unwrap();
+        cur.set_position(0);
+        let (op, body) = read_frame(&mut cur).unwrap();
         assert_eq!((op, body), (OP_FRAME, json!({ "x": 1 })));
     }
 
