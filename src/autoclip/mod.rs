@@ -5,6 +5,7 @@
 //! when something clip-worthy happened; Lapse then saves the last part of the replay
 //! buffer without clearing it.
 
+pub mod lol;
 mod rounds;
 mod streaks;
 
@@ -23,7 +24,7 @@ const CFG_NAME: &str = "gamestate_integration_lapse.cfg";
 
 /// What one game state update means for a tracker.
 #[derive(Debug, PartialEq)]
-enum Action {
+pub enum Action {
     Nothing,
     /// Save from the first kill (`secs` ago; the configured lead-in is added);
     /// `label` goes into the file name.
@@ -34,15 +35,17 @@ enum Action {
 pub enum Game {
     Cs2,
     Dota2,
+    Lol,
 }
 
-static LAST_UPDATE: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
+pub static LAST_UPDATE: [AtomicU64; 3] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
 
 impl Game {
     pub fn name(self) -> &'static str {
         match self {
             Game::Cs2 => "Counter-Strike 2",
             Game::Dota2 => "Dota 2",
+            Game::Lol => "League of Legends",
         }
     }
 
@@ -50,6 +53,7 @@ impl Game {
         match self {
             Game::Cs2 => "lapse-gsi",
             Game::Dota2 => "lapse-gsi-dota",
+            Game::Lol => "",
         }
     }
 
@@ -66,6 +70,7 @@ impl Game {
         match self {
             Game::Cs2 => (config.cs2_auto_clip, config.cs2_min_kills),
             Game::Dota2 => (config.dota_auto_clip, config.dota_min_kills),
+            Game::Lol => (config.lol_auto_clip, config.lol_min_kills),
         }
     }
 
@@ -74,6 +79,7 @@ impl Game {
         match self {
             Game::Cs2 => config.cs2_lead_in,
             Game::Dota2 => config.dota_lead_in,
+            Game::Lol => config.lol_lead_in,
         }
     }
 
@@ -82,11 +88,15 @@ impl Game {
         match self {
             Game::Cs2 => ("Counter-Strike Global Offensive/game/csgo/cfg", ""),
             Game::Dota2 => ("dota 2 beta/game/dota/cfg", "gamestate_integration"),
+            Game::Lol => ("", ""),
         }
     }
 
     /// Folder the cfg is written to, if the game is installed.
     pub fn cfg_dir(self) -> Option<PathBuf> {
+        if self == Game::Lol {
+            return None;
+        }
         let (cfg, sub) = self.paths();
         crate::hardware::steam::library_dirs()
             .into_iter()
@@ -96,6 +106,9 @@ impl Game {
     }
 
     pub fn is_installed(self) -> bool {
+        if self == Game::Lol {
+            return false;
+        }
         self.cfg_dir().map(|d| d.join(CFG_NAME).is_file()).unwrap_or(false)
     }
 
@@ -103,6 +116,7 @@ impl Game {
         match self {
             Game::Cs2 => "    \"provider\" \"1\"\n    \"map\" \"1\"\n    \"round\" \"1\"\n    \"player_id\" \"1\"\n    \"player_state\" \"1\"\n    \"player_match_stats\" \"1\"\n",
             Game::Dota2 => "    \"provider\" \"1\"\n    \"map\" \"1\"\n    \"player\" \"1\"\n    \"hero\" \"1\"\n",
+            Game::Lol => "",
         }
     }
 
@@ -163,7 +177,7 @@ fn label(name: &str, what: &str) -> String {
     if name.is_empty() { what.to_string() } else { format!("{}_{}", name, what) }
 }
 
-fn unix_now() -> u64 {
+pub(crate) fn unix_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
@@ -179,6 +193,7 @@ impl Trackers {
         match game {
             Game::Cs2 => self.cs2.update(state, min_kills, now),
             Game::Dota2 => self.dota2.update(state, min_kills, now),
+            Game::Lol => Action::Nothing,
         }
     }
 
@@ -186,6 +201,7 @@ impl Trackers {
         match game {
             Game::Cs2 => self.cs2.take_new_kills(),
             Game::Dota2 => self.dota2.take_new_kills(),
+            Game::Lol => 0,
         }
     }
 
@@ -193,11 +209,12 @@ impl Trackers {
         match game {
             Game::Cs2 => self.cs2.poll(min_kills, now),
             Game::Dota2 => self.dota2.poll(min_kills, now),
+            Game::Lol => Action::Nothing,
         }
     }
 }
 
-fn run(game: Game, action: Action, recorder: &Arc<Mutex<Recorder>>) {
+pub(crate) fn run(game: Game, action: Action, recorder: &Arc<Mutex<Recorder>>) {
     if let Action::Save { secs, kills, label } = action {
         if let Ok(mut rec) = recorder.lock() {
             let secs = secs + game.lead_in(rec.config());
@@ -245,6 +262,7 @@ fn read_request(stream: &mut TcpStream) -> Option<serde_json::Value> {
 
 /// Listens on 127.0.0.1 for game state. Costs nothing while no supported game runs.
 pub fn start_server(recorder: Arc<Mutex<Recorder>>) {
+    lol::start_poller(Arc::clone(&recorder));
     let listener = match TcpListener::bind(("127.0.0.1", PORT)) {
         Ok(l) => l,
         Err(e) => {

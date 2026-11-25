@@ -3,7 +3,7 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// Loudness is measured over windows of this length.
 const WINDOW_SECS: f64 = 0.25;
@@ -14,7 +14,7 @@ const MAX_HIGHLIGHTS: usize = 8;
 /// Loudness (dB) of the first audio track, one value per window.
 fn loudness(path: &Path) -> anyhow::Result<Vec<f32>> {
     const RATE: usize = 8000;
-    let mut child = Command::new("ffmpeg")
+    let mut child = crate::utils::ffmpeg_cmd()
         .args(["-loglevel", "error", "-i"])
         .arg(path)
         .args(["-map", "0:a:0", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"])
