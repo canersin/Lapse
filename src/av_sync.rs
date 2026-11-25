@@ -6,7 +6,7 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// Analysis grid: one value every 5 ms.
 const STEP_MS: i32 = 5;
@@ -21,7 +21,7 @@ pub struct Measurement {
 }
 
 fn ffmpeg_raw(args: &[&str], path: &Path) -> anyhow::Result<Vec<u8>> {
-    let mut child = Command::new("ffmpeg")
+    let mut child = crate::utils::ffmpeg_cmd()
         .args(["-loglevel", "error", "-t", &ANALYZE_SECS.to_string(), "-i"])
         .arg(path)
         .args(args)
@@ -130,7 +130,7 @@ pub fn measure(path: &Path) -> anyhow::Result<Measurement> {
 }
 
 fn probe_fps(path: &Path) -> Option<f64> {
-    let out = Command::new("ffprobe")
+    let out = crate::utils::ffprobe_cmd()
         .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0"])
         .arg(path)
         .output()

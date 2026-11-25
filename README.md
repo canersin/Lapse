@@ -60,8 +60,6 @@ you; with the plain binary you install them yourself.
 | `gpu-screen-recorder` | Recording | Yes |
 | `ffmpeg` (with `ffprobe`) | Trimming, exports, thumbnails | Yes |
 | `xdg-desktop-portal` (with your desktop's backend) or `zenity` | File dialogs | Recommended |
-| `curl` | Update check, Discord, sharing | Recommended |
-| `libnotify` (`notify-send`) | "Clip saved" notifications with buttons | Recommended |
 | `cloudflared` | Public share links | No, Lapse downloads it the first time you share |
 
 ### Arch Linux and derivatives (AUR)
