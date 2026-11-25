@@ -5,6 +5,7 @@ pub mod app;
 pub mod components;
 pub mod i18n;
 pub mod library;
+pub mod platform;
 pub mod player;
 pub mod settings;
 pub mod single_instance;
