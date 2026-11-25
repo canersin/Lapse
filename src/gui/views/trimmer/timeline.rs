@@ -3,12 +3,13 @@
 use eframe::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Rect, Rounding, Sense, Stroke, Vec2};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::engine::{HighlightJob, PlayerState, TimelineDragTarget};
 use super::format_time;
+use super::overlays::OverlayKind;
 use crate::gui::components::icon::{draw_vector_icon, IconKind};
 use crate::gui::components::motion::{ease_out, lerp_color, FAST};
 use crate::gui::components::button::{m3_small_button, m3_small_button_colored};
@@ -129,6 +130,42 @@ pub fn render_marker_bar(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut Play
     seek
 }
 
+/// Builds ffmpeg arguments for extracting one filmstrip preview frame.
+pub fn build_filmstrip_args(
+    seek_seconds: f64,
+    video: &Path,
+    out: &Path,
+    vaapi_device: Option<&str>,
+    keyframes_only: bool,
+) -> Vec<String> {
+    let mut args = vec![
+        "-nostdin".into(),
+        "-loglevel".into(),
+        "error".into(),
+    ];
+    if let Some(device) = vaapi_device {
+        args.extend(["-hwaccel".into(), "vaapi".into(), "-hwaccel_device".into(), device.into()]);
+    }
+    if keyframes_only {
+        args.extend(["-skip_frame".into(), "nokey".into()]);
+    }
+    args.extend([
+        "-threads".into(),
+        "2".into(),
+        "-ss".into(),
+        format!("{:.2}", seek_seconds),
+        "-i".into(),
+        video.to_string_lossy().to_string(),
+        "-frames:v".into(),
+        "1".into(),
+        "-vf".into(),
+        "scale=-2:120".into(),
+        "-y".into(),
+        out.to_string_lossy().to_string(),
+    ]);
+    args
+}
+
 /// Small preview frames along the clip, extracted in the background.
 pub struct Filmstrip {
     frames: Arc<Mutex<Vec<Option<PathBuf>>>>,
@@ -141,20 +178,77 @@ impl Filmstrip {
         let slots = Arc::clone(&frames);
         let video = video.to_path_buf();
         std::thread::spawn(move || {
-            let _ = std::fs::create_dir_all(&dir);
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                eprintln!("Lapse: failed to create filmstrip cache directory {}: {e}", dir.display());
+            }
+            let mut vaapi = super::engine::preferred_vaapi_node();
             for i in 0..FRAMES {
                 let out = dir.join(format!("{:02}.jpg", i));
                 if !out.exists() {
                     let t = (i as f64 + 0.5) * duration / FRAMES as f64;
-                    let _ = Command::new("ffmpeg")
-                        .args(["-nostdin", "-loglevel", "error", "-ss", &format!("{:.2}", t), "-i"])
-                        .arg(&video)
-                        .args(["-frames:v", "1", "-vf", "scale=-2:120", "-y"])
-                        .arg(&out)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status();
+                    let mut success = false;
+                    if let Some(node) = vaapi.as_deref() {
+                        let args = build_filmstrip_args(t, &video, &out, Some(node), true);
+                        let mut cmd = crate::utils::ffmpeg_cmd();
+                        cmd.args(&args)
+                            .stdin(Stdio::null())
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::piped());
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::process::CommandExt;
+                            unsafe {
+                                cmd.pre_exec(|| {
+                                    libc::nice(10);
+                                    Ok(())
+                                });
+                            }
+                        }
+                        if let Ok(output) = cmd.output() {
+                            if output.status.success() && out.exists() {
+                                success = true;
+                            } else {
+                                vaapi = None;
+                            }
+                        } else {
+                            vaapi = None;
+                        }
+                    }
+                    if !success && !out.exists() {
+                        // Past the last keyframe a keyframes-only decode yields
+                        // nothing, so retry that frame with a full decode.
+                        for keyframes_only in [true, false] {
+                            let args = build_filmstrip_args(t, &video, &out, None, keyframes_only);
+                            let mut cmd = crate::utils::ffmpeg_cmd();
+                            cmd.args(&args)
+                                .stdin(Stdio::null())
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::piped());
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::process::CommandExt;
+                                unsafe {
+                                    cmd.pre_exec(|| {
+                                        libc::nice(10);
+                                        Ok(())
+                                    });
+                                }
+                            }
+                            match cmd.output() {
+                                Ok(output) if output.status.success() && out.exists() => break,
+                                Ok(output) => {
+                                    let err = String::from_utf8_lossy(&output.stderr);
+                                    if !keyframes_only && !err.trim().is_empty() {
+                                        eprintln!("Lapse: ffmpeg filmstrip frame {i} failed for {}: {err}", video.display());
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Lapse: failed to execute ffmpeg for filmstrip frame {i} ({}): {e}", video.display());
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
                 if out.exists() {
                     if let Ok(mut f) = slots.lock() {
@@ -183,7 +277,7 @@ fn cache_dir(video: &Path) -> PathBuf {
         .map(|d| d.cache_dir().to_path_buf())
         .unwrap_or_else(std::env::temp_dir);
     // v2: 24 frames at 120 px (older caches had 12 at 72 px).
-    base.join("lapse/filmstrip-v2").join(format!("{:016x}", h.finish()))
+    base.join("lapse").join("filmstrip-v2").join(format!("{:016x}", h.finish()))
 }
 
 /// Draws the timeline and returns a seek target when the user scrubs or drags a handle.
@@ -192,7 +286,17 @@ pub fn render_timeline(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut Player
     let width = ui.available_width();
     // Taller on wide windows, so the filmstrip doesn't turn into a thin ribbon.
     let strip_h = (width * 0.045).clamp(64.0, 104.0);
-    let (outer, _) = ui.allocate_exact_size(Vec2::new(width, strip_h + 22.0), Sense::hover());
+
+    let num_overlays = state.export.overlays.len();
+    let lane_h = 16.0;
+    let lane_gap = 4.0;
+    let lanes_total_h = if num_overlays > 0 {
+        num_overlays as f32 * (lane_h + lane_gap) + 4.0
+    } else {
+        0.0
+    };
+
+    let (outer, _) = ui.allocate_exact_size(Vec2::new(width, strip_h + 24.0 + lanes_total_h), Sense::hover());
     let strip = Rect::from_min_size(outer.min + Vec2::new(10.0, 4.0), Vec2::new(width - 20.0, strip_h - 8.0));
     let resp = ui.interact(strip.expand2(Vec2::new(10.0, 6.0)), ui.id().with("trim_timeline"), Sense::click_and_drag());
     let painter = ui.painter();
@@ -318,7 +422,12 @@ pub fn render_timeline(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut Player
 
     // Playhead.
     let x_now = x_of(state.current_time.as_secs_f32());
-    painter.line_segment([Pos2::new(x_now, strip.top() - 4.0), Pos2::new(x_now, strip.bottom() + 4.0)], Stroke::new(2.0_f32, Color32::WHITE));
+    let playhead_bottom = if num_overlays > 0 {
+        strip.bottom() + 24.0 + num_overlays as f32 * (lane_h + lane_gap)
+    } else {
+        strip.bottom() + 4.0
+    };
+    painter.line_segment([Pos2::new(x_now, strip.top() - 4.0), Pos2::new(x_now, playhead_bottom)], Stroke::new(2.0_f32, Color32::WHITE));
     painter.add(egui::Shape::convex_polygon(
         vec![Pos2::new(x_now - 6.0, strip.top() - 8.0), Pos2::new(x_now + 6.0, strip.top() - 8.0), Pos2::new(x_now, strip.top() - 1.0)],
         Color32::WHITE,
@@ -342,19 +451,164 @@ pub fn render_timeline(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut Player
         .into_iter()
         .find(|s| strip.width() / (dur / s) >= 60.0)
         .unwrap_or(600.0);
-    let mut t = 0.0;
-    while t <= dur + 0.001 {
-        let x = x_of(t);
+    let mut ruler_t = 0.0;
+    while ruler_t <= dur + 0.001 {
+        let x = x_of(ruler_t);
         painter.line_segment([Pos2::new(x, strip.bottom() + 5.0), Pos2::new(x, strip.bottom() + 9.0)], Stroke::new(1.0_f32, theme.outline));
         painter.text(
             Pos2::new(x, strip.bottom() + 11.0),
             Align2::CENTER_TOP,
-            format!("{}:{:02}", (t as u32) / 60, (t as u32) % 60),
+            format!("{}:{:02}", (ruler_t as u32) / 60, (ruler_t as u32) % 60),
             FontId::proportional(10.0),
             theme.outline,
         );
-        t += step;
+        ruler_t += step;
+    }
+
+    // Overlay lanes under the filmstrip and ruler
+    if num_overlays > 0 {
+        let lanes_start_y = strip.bottom() + 24.0;
+        let dur_f64 = dur as f64;
+        for (i, overlay) in state.export.overlays.iter_mut().enumerate() {
+            let lane_y = lanes_start_y + i as f32 * (lane_h + lane_gap);
+            let lane_rect = Rect::from_min_size(Pos2::new(strip.left(), lane_y), Vec2::new(strip.width(), lane_h));
+
+            // Background track
+            painter.rect_filled(lane_rect, Rounding::same(4.0), theme.surface_container_highest.gamma_multiply(0.35));
+            painter.rect_stroke(lane_rect, Rounding::same(4.0), Stroke::new(1.0_f32, theme.outline_variant.gamma_multiply(0.4)));
+
+            let is_sel = state.export.selected == Some(i);
+
+            // Clamp overlay timings to clip
+            overlay.start = overlay.start.clamp(0.0, dur_f64);
+            overlay.end = overlay.end.clamp(overlay.start + 0.05, dur_f64);
+
+            let x_start = x_of(overlay.start as f32);
+            let x_end = x_of(overlay.end as f32).max(x_start + 8.0);
+
+            let band_rect = Rect::from_min_max(Pos2::new(x_start, lane_rect.top() + 1.0), Pos2::new(x_end, lane_rect.bottom() - 1.0));
+
+            let band_fill = if is_sel {
+                theme.primary
+            } else {
+                lerp_color(theme.surface_container_highest, theme.primary, 0.35)
+            };
+            let band_stroke = if is_sel {
+                Stroke::new(1.5_f32, theme.on_primary_container)
+            } else {
+                Stroke::new(1.0_f32, theme.outline_variant)
+            };
+            painter.rect_filled(band_rect, Rounding::same(3.0), band_fill);
+            painter.rect_stroke(band_rect, Rounding::same(3.0), band_stroke);
+
+            // Preview label inside band
+            let fg = if is_sel { theme.on_primary } else { theme.on_surface };
+            let label_text = match &overlay.kind {
+                OverlayKind::Text { text, .. } => {
+                    let t_sub: String = text.chars().take(18).collect();
+                    if t_sub.is_empty() { t("Text").to_string() } else { t_sub }
+                }
+                OverlayKind::Image { path, .. } | OverlayKind::Video { path, .. } | OverlayKind::Audio { path, .. } => {
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("media").to_string()
+                }
+            };
+            if band_rect.width() > 32.0 {
+                let galley = painter.layout_no_wrap(label_text, FontId::proportional(10.0), fg);
+                if galley.size().x + 16.0 <= band_rect.width() {
+                    painter.galley(Pos2::new(band_rect.left() + 8.0, band_rect.center().y - galley.size().y * 0.5), galley, fg);
+                }
+            }
+
+            // Handles on the ends of the band
+            let handle_w = 6.0;
+            let left_handle_rect = Rect::from_min_max(Pos2::new(x_start, lane_rect.top() + 1.0), Pos2::new(x_start + handle_w, lane_rect.bottom() - 1.0));
+            let right_handle_rect = Rect::from_min_max(Pos2::new(x_end - handle_w, lane_rect.top() + 1.0), Pos2::new(x_end, lane_rect.bottom() - 1.0));
+
+            let handle_fill = if is_sel { theme.on_primary } else { theme.primary };
+            painter.rect_filled(left_handle_rect, Rounding { nw: 3.0, sw: 3.0, ne: 0.0, se: 0.0 }, handle_fill);
+            painter.rect_filled(right_handle_rect, Rounding { nw: 0.0, sw: 0.0, ne: 3.0, se: 3.0 }, handle_fill);
+
+            // Interactions:
+            // 1. Empty lane track click -> select
+            let lane_resp = ui.interact(lane_rect, ui.id().with("lane_track").with(i), Sense::click());
+            if lane_resp.clicked() {
+                state.export.selected = Some(i);
+            }
+
+            // 2. Band body click and drag -> moves both start and end, keeping length
+            let body_resp = ui.interact(band_rect, ui.id().with("lane_body").with(i), Sense::click_and_drag());
+            if body_resp.drag_started() || body_resp.clicked() {
+                state.export.selected = Some(i);
+            }
+            if body_resp.dragged() {
+                let dt = (body_resp.drag_delta().x / strip.width()) as f64 * dur_f64;
+                let len = overlay.end - overlay.start;
+                overlay.start = (overlay.start + dt).clamp(0.0, (dur_f64 - len).max(0.0));
+                overlay.end = overlay.start + len;
+                state.export.selected = Some(i);
+                seek = Some(Duration::from_secs_f64(overlay.start));
+                ui.ctx().set_cursor_icon(CursorIcon::Move);
+            } else if body_resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::Move);
+            }
+
+            // 3. Left handle drag -> moves start
+            let left_hit = Rect::from_center_size(Pos2::new(x_start, lane_rect.center().y), Vec2::new(10.0, lane_rect.height()));
+            let left_resp = ui.interact(left_hit, ui.id().with("lane_lh").with(i), Sense::click_and_drag());
+            if left_resp.drag_started() || left_resp.clicked() {
+                state.export.selected = Some(i);
+            }
+            if left_resp.dragged() {
+                let dt = (left_resp.drag_delta().x / strip.width()) as f64 * dur_f64;
+                overlay.start = (overlay.start + dt).clamp(0.0, overlay.end - 0.05);
+                state.export.selected = Some(i);
+                seek = Some(Duration::from_secs_f64(overlay.start));
+                ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+            } else if left_resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+            }
+
+            // 4. Right handle drag -> moves end
+            let right_hit = Rect::from_center_size(Pos2::new(x_end, lane_rect.center().y), Vec2::new(10.0, lane_rect.height()));
+            let right_resp = ui.interact(right_hit, ui.id().with("lane_rh").with(i), Sense::click_and_drag());
+            if right_resp.drag_started() || right_resp.clicked() {
+                state.export.selected = Some(i);
+            }
+            if right_resp.dragged() {
+                let dt = (right_resp.drag_delta().x / strip.width()) as f64 * dur_f64;
+                overlay.end = (overlay.end + dt).clamp(overlay.start + 0.05, dur_f64);
+                state.export.selected = Some(i);
+                seek = Some(Duration::from_secs_f64(overlay.end));
+                ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+            } else if right_resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+            }
+        }
     }
 
     seek
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_filmstrip_args() {
+        let video = Path::new("C:\\Videos\\clip.mp4");
+        let out = Path::new("C:\\Cache\\00.jpg");
+        let args = build_filmstrip_args(12.34, video, out, None, true);
+        assert!(args.contains(&"-skip_frame".to_string()));
+        assert!(args.contains(&"nokey".to_string()));
+        assert!(args.contains(&"12.34".to_string()));
+        assert!(args.contains(&"scale=-2:120".to_string()));
+        assert_eq!(args.last().unwrap(), &out.to_string_lossy().to_string());
+
+        let vaapi_args = build_filmstrip_args(12.34, video, out, Some("/dev/dri/renderD128"), true);
+        assert!(vaapi_args.contains(&"-hwaccel".to_string()));
+        assert!(vaapi_args.contains(&"vaapi".to_string()));
+        assert!(vaapi_args.contains(&"-hwaccel_device".to_string()));
+        assert!(vaapi_args.contains(&"/dev/dri/renderD128".to_string()));
+        assert!(vaapi_args.contains(&"scale=-2:120".to_string()));
+    }
 }

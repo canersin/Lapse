@@ -8,6 +8,8 @@
 pub mod engine;
 pub mod export_panel;
 mod fullscreen;
+pub mod mpv;
+pub mod overlays;
 pub mod timeline;
 
 pub use fullscreen::render_fullscreen;
@@ -17,12 +19,20 @@ pub use engine::{format_file_size, PlayerState};
 use eframe::egui::{self, Color32, Key, Margin, Pos2, Rect, Response, RichText, Sense, Stroke, Vec2};
 use std::time::Duration;
 
-use crate::gui::components::icon::{draw_vector_icon, IconKind};
-use crate::gui::components::motion::{centered_label, ease_out, hover_t, lerp_color, m3_switch_labeled, FAST};
+use crate::export::{CropAspect, CropHandle, CropRect};
 use crate::gui::components::button::{m3_field_style, m3_small_button};
 use crate::gui::components::dropdown::m3_dropdown;
+use crate::gui::components::icon::{draw_vector_icon, IconKind};
+use crate::gui::components::motion::{centered_label, ease_out, hover_t, lerp_color, FAST};
 use crate::gui::i18n::t;
 use crate::gui::theme::{M3Shapes, MonetTheme};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ActiveCropDrag {
+    None,
+    Inside,
+    Handle(CropHandle),
+}
 
 pub fn format_time(d: Duration) -> String {
     let secs = d.as_secs();
@@ -94,8 +104,8 @@ pub fn render_player(player_state: &mut Option<PlayerState>, theme: &MonetTheme,
 /// YouTube-style keys: Space/K play, J/L 10 s, arrows 5 s and volume, F fullscreen,
 /// M mute, 0-9 jump to 0-90 %, Home/End, , . frame step, I/O selection.
 pub(super) fn handle_keys(ui: &egui::Ui, state: &mut PlayerState, seek: &mut Option<Duration>) {
-    // Don't steal keys while the user types a file name.
-    if ui.ctx().wants_keyboard_input() {
+    // Don't steal keys while the user types a file name or edits text overlay.
+    if ui.ctx().wants_keyboard_input() || overlays::is_editing_text_overlay(ui.ctx()) {
         return;
     }
     let pressed = |k: Key| ui.input(|i| i.key_pressed(k));
@@ -157,6 +167,14 @@ pub(super) fn handle_keys(ui: &egui::Ui, state: &mut PlayerState, seek: &mut Opt
     if pressed(Key::Escape) && state.fullscreen {
         state.fullscreen = false;
     }
+    if pressed(Key::Delete) || pressed(Key::Backspace) {
+        if let Some(idx) = state.export.selected {
+            if idx < state.export.overlays.len() {
+                state.export.overlays.remove(idx);
+                state.export.selected = None;
+            }
+        }
+    }
 }
 
 fn card(ui: &mut egui::Ui, theme: &MonetTheme, add: impl FnOnce(&mut egui::Ui)) {
@@ -181,21 +199,6 @@ fn pill(ui: &mut egui::Ui, theme: &MonetTheme, text: &str) {
         });
 }
 
-/// "Share": a public link (Cloudflare tunnel) or the clip sent to a Discord channel.
-fn share_menu(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState) {
-    use crate::gui::views::share_menu::{discord_status, share_menu, webhook_url, ShareChoice};
-    let hint = t("Over 10 MB: the selection is shrunk with the Discord preset, then sent.");
-    match share_menu(ui, theme, "trimmer_share_menu", state.file_size_bytes, 32.0, hint) {
-        Some(ShareChoice::Link) => crate::share::start_live_share(state.video_path.clone()),
-        Some(ShareChoice::Discord) if state.file_size_bytes <= crate::discord::MAX_BYTES => {
-            crate::discord::send(state.video_path.clone(), webhook_url())
-        }
-        // Too big for Discord: export the selection to fit, then send the result.
-        Some(ShareChoice::Discord) => export_panel::export_for_discord(state),
-        None => {}
-    }
-    discord_status(ui, theme, &state.video_path);
-}
 
 /// Returns true when the user wants to go back.
 fn header(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, save_path: &std::path::Path) -> bool {
@@ -218,7 +221,7 @@ fn header(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, save_p
                     pill(ui, theme, &format!("{:.0} fps", state.fps));
                     pill(ui, theme, &crate::clip_index::format_duration(state.duration.as_secs_f64()));
                     pill(ui, theme, &format_file_size(state.file_size_bytes));
-                    if state.player.is_none() {
+                    if state.player.is_none() && state.mpv.is_none() {
                         pill(ui, theme, t("No audio output"));
                     }
                 });
@@ -226,7 +229,6 @@ fn header(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, save_p
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(12.0);
-            share_menu(ui, theme, state);
             if m3_small_button(ui, theme, t("Show in folder")).clicked() {
                 let _ = open::that(state.video_path.parent().unwrap_or(&state.video_path));
             }
@@ -240,7 +242,18 @@ fn video(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, size: V
     let painter = ui.painter();
     painter.rect_filled(rect, M3Shapes::LARGE, Color32::BLACK);
 
-    if let Some(texture) = &state.texture {
+    let mut crop_interacted = false;
+
+    if mpv::has_pending_gl_cleanup() {
+        ui.painter().add(egui::PaintCallback {
+            rect: Rect::from_min_size(Pos2::ZERO, Vec2::ZERO),
+            callback: std::sync::Arc::new(eframe::egui_glow::CallbackFn::new(|_info, painter| {
+                mpv::drain_gl_cleanup(painter.gl());
+            })),
+        });
+    }
+
+    if state.has_video() {
         let aspect = state.orig_width as f32 / state.orig_height.max(1) as f32;
         let mut target = rect.size();
         if target.x / aspect > target.y {
@@ -249,16 +262,154 @@ fn video(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, size: V
             target.y = target.x / aspect;
         }
         let image_rect = Rect::from_center_size(rect.center(), target);
-        painter.image(texture.id(), image_rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
-        if state.export.preset == crate::export::ExportPreset::Vertical {
-            // Shade what the 9:16 export leaves out.
-            let w = (image_rect.height() * 9.0 / 16.0).min(image_rect.width());
-            let x = image_rect.left() + (image_rect.width() - w) * state.export.crop_x.clamp(0.0, 1.0);
-            let keep = Rect::from_min_size(Pos2::new(x, image_rect.top()), Vec2::new(w, image_rect.height()));
+        state.paint_video(ui, image_rect);
+
+        let output_rect = if let Some(crop) = state.export.crop.as_ref() {
+            Rect::from_min_max(
+                Pos2::new(image_rect.left() + crop.x * image_rect.width(), image_rect.top() + crop.y * image_rect.height()),
+                Pos2::new(image_rect.left() + (crop.x + crop.w) * image_rect.width(), image_rect.top() + (crop.y + crop.h) * image_rect.height()),
+            )
+        } else {
+            image_rect
+        };
+
+        if overlays::render_preview_overlays(ui, painter, theme, state, output_rect) {
+            crop_interacted = true;
+        }
+
+        if let Some(crop) = state.export.crop.as_mut() {
+            let box_rect = Rect::from_min_max(
+                Pos2::new(image_rect.left() + crop.x * image_rect.width(), image_rect.top() + crop.y * image_rect.height()),
+                Pos2::new(image_rect.left() + (crop.x + crop.w) * image_rect.width(), image_rect.top() + (crop.y + crop.h) * image_rect.height()),
+            );
+
+            let handle_positions = [
+                (CropHandle::TopLeft, box_rect.left_top()),
+                (CropHandle::Top, Pos2::new(box_rect.center().x, box_rect.top())),
+                (CropHandle::TopRight, box_rect.right_top()),
+                (CropHandle::Right, Pos2::new(box_rect.right(), box_rect.center().y)),
+                (CropHandle::BottomRight, box_rect.right_bottom()),
+                (CropHandle::Bottom, Pos2::new(box_rect.center().x, box_rect.bottom())),
+                (CropHandle::BottomLeft, box_rect.left_bottom()),
+                (CropHandle::Left, Pos2::new(box_rect.left(), box_rect.center().y)),
+            ];
+
+            let drag_id = ui.id().with("crop_drag_active");
+            let mut active: ActiveCropDrag = ui.ctx().data_mut(|d| d.get_temp(drag_id)).unwrap_or(ActiveCropDrag::None);
+
+            let pointer_pos = ui.input(|i| i.pointer.hover_pos());
+            let is_down = ui.input(|i| i.pointer.primary_down());
+            let is_pressed = ui.input(|i| i.pointer.primary_pressed());
+            let delta = ui.input(|i| i.pointer.delta());
+
+            if !is_down {
+                active = ActiveCropDrag::None;
+                ui.ctx().data_mut(|d| d.insert_temp(drag_id, ActiveCropDrag::None));
+            } else if is_pressed && active == ActiveCropDrag::None && !crop_interacted {
+                if let Some(pos) = pointer_pos {
+                    if let Some((handle, _)) = handle_positions.iter().find(|(_, hp)| pos.distance(*hp) <= 12.0) {
+                        active = ActiveCropDrag::Handle(*handle);
+                        ui.ctx().data_mut(|d| d.insert_temp(drag_id, active));
+                    } else if box_rect.contains(pos) {
+                        active = ActiveCropDrag::Inside;
+                        ui.ctx().data_mut(|d| d.insert_temp(drag_id, active));
+                    }
+                }
+            }
+
+            if active != ActiveCropDrag::None {
+                crop_interacted = true;
+                match active {
+                    ActiveCropDrag::Handle(h) => ui.ctx().set_cursor_icon(h.cursor()),
+                    ActiveCropDrag::Inside => ui.ctx().set_cursor_icon(egui::CursorIcon::Move),
+                    ActiveCropDrag::None => {}
+                }
+
+                if delta != Vec2::ZERO && image_rect.width() > 0.0 && image_rect.height() > 0.0 {
+                    let dx = delta.x / image_rect.width();
+                    let dy = delta.y / image_rect.height();
+                    match active {
+                        ActiveCropDrag::Inside => {
+                            crop.move_by(dx, dy);
+                        }
+                        ActiveCropDrag::Handle(h) => {
+                            *crop = crop.resize(
+                                h,
+                                dx,
+                                dy,
+                                state.export.crop_aspect,
+                                state.orig_width,
+                                state.orig_height,
+                            );
+                        }
+                        ActiveCropDrag::None => {}
+                    }
+                }
+            } else if let Some(pos) = pointer_pos {
+                if !crop_interacted {
+                    if let Some((handle, _)) = handle_positions.iter().find(|(_, hp)| pos.distance(*hp) <= 12.0) {
+                        ui.ctx().set_cursor_icon(handle.cursor());
+                        crop_interacted = true;
+                    } else if box_rect.contains(pos) {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::Move);
+                        crop_interacted = true;
+                    }
+                }
+            }
+
+            // Recompute box_rect after potential move/resize for rendering
+            let box_rect = Rect::from_min_max(
+                Pos2::new(image_rect.left() + crop.x * image_rect.width(), image_rect.top() + crop.y * image_rect.height()),
+                Pos2::new(image_rect.left() + (crop.x + crop.w) * image_rect.width(), image_rect.top() + (crop.y + crop.h) * image_rect.height()),
+            );
+
+            // Darken outside the box
             let shade = Color32::from_black_alpha(170);
-            painter.rect_filled(Rect::from_min_max(image_rect.min, Pos2::new(keep.left(), image_rect.bottom())), 0.0, shade);
-            painter.rect_filled(Rect::from_min_max(Pos2::new(keep.right(), image_rect.top()), image_rect.max), 0.0, shade);
-            painter.rect_stroke(keep, 4.0, Stroke::new(2.0_f32, theme.primary));
+            if box_rect.top() > image_rect.top() {
+                painter.rect_filled(Rect::from_min_max(image_rect.min, Pos2::new(image_rect.right(), box_rect.top())), 0.0, shade);
+            }
+            if box_rect.bottom() < image_rect.bottom() {
+                painter.rect_filled(Rect::from_min_max(Pos2::new(image_rect.left(), box_rect.bottom()), image_rect.max), 0.0, shade);
+            }
+            if box_rect.left() > image_rect.left() {
+                painter.rect_filled(Rect::from_min_max(Pos2::new(image_rect.left(), box_rect.top()), Pos2::new(box_rect.left(), box_rect.bottom())), 0.0, shade);
+            }
+            if box_rect.right() < image_rect.right() {
+                painter.rect_filled(Rect::from_min_max(Pos2::new(box_rect.right(), box_rect.top()), Pos2::new(image_rect.right(), box_rect.bottom())), 0.0, shade);
+            }
+
+            // Draw rule-of-thirds grid while dragging
+            if active != ActiveCropDrag::None {
+                let grid_stroke = Stroke::new(1.0_f32, Color32::from_white_alpha(90));
+                let x1 = box_rect.left() + box_rect.width() / 3.0;
+                let x2 = box_rect.left() + 2.0 * box_rect.width() / 3.0;
+                let y1 = box_rect.top() + box_rect.height() / 3.0;
+                let y2 = box_rect.top() + 2.0 * box_rect.height() / 3.0;
+                painter.line_segment([Pos2::new(x1, box_rect.top()), Pos2::new(x1, box_rect.bottom())], grid_stroke);
+                painter.line_segment([Pos2::new(x2, box_rect.top()), Pos2::new(x2, box_rect.bottom())], grid_stroke);
+                painter.line_segment([Pos2::new(box_rect.left(), y1), Pos2::new(box_rect.right(), y1)], grid_stroke);
+                painter.line_segment([Pos2::new(box_rect.left(), y2), Pos2::new(box_rect.right(), y2)], grid_stroke);
+            }
+
+            // Box border
+            painter.rect_stroke(box_rect, 0.0, Stroke::new(2.0_f32, theme.primary));
+
+            // 8 handles (4 corners + 4 edges)
+            let updated_handles = [
+                box_rect.left_top(),
+                Pos2::new(box_rect.center().x, box_rect.top()),
+                box_rect.right_top(),
+                Pos2::new(box_rect.right(), box_rect.center().y),
+                box_rect.right_bottom(),
+                Pos2::new(box_rect.center().x, box_rect.bottom()),
+                box_rect.left_bottom(),
+                Pos2::new(box_rect.left(), box_rect.center().y),
+            ];
+            for hp in updated_handles {
+                let hr = Rect::from_center_size(hp, Vec2::splat(8.0));
+                painter.rect_filled(hr, 2.0, Color32::WHITE);
+                painter.rect_stroke(hr, 2.0, Stroke::new(1.0_f32, theme.primary));
+            }
         }
     } else {
         ui.put(Rect::from_center_size(rect.center(), Vec2::splat(36.0)), egui::Spinner::new().size(36.0));
@@ -266,7 +417,8 @@ fn video(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, size: V
 
     // Play overlay fades in when paused and grows a little on hover.
     let paused = ease_out(ui.ctx().animate_bool_with_time(resp.id.with("paused"), !state.is_playing, FAST * 2.0));
-    if paused > 0.01 {
+    // Hidden while an overlay is selected: new overlays start at the centre, right under it.
+    if paused > 0.01 && !crop_interacted && state.export.selected.is_none() {
         let h = hover_t(ui, &resp);
         let r = 34.0 + 4.0 * h;
         let painter = ui.painter();
@@ -274,10 +426,11 @@ fn video(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState, size: V
         painter.circle_stroke(rect.center(), r, Stroke::new(2.0_f32, theme.primary.gamma_multiply(paused)));
         draw_vector_icon(painter, rect.center() + Vec2::new(2.0, 0.0), 26.0, IconKind::Play, Color32::WHITE.gamma_multiply(paused));
     }
-    if resp.clicked() {
+    if resp.clicked() && !crop_interacted {
+        state.export.selected = None;
         state.toggle_play();
     }
-    if resp.double_clicked() {
+    if resp.double_clicked() && !crop_interacted {
         state.fullscreen = !state.fullscreen;
     }
 }
@@ -367,13 +520,13 @@ fn transport(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState) -> 
     seek
 }
 
-fn time_field(ui: &mut egui::Ui, value: &mut Duration, min: f32, max: f32) -> bool {
-    let mut secs = value.as_secs_f32();
+pub fn time_field_secs(ui: &mut egui::Ui, secs: &mut f64, min: f64, max: f64) -> bool {
+    let mut val = *secs as f32;
     let changed = ui
         .add(
-            egui::DragValue::new(&mut secs)
+            egui::DragValue::new(&mut val)
                 .speed(0.05)
-                .clamp_range(min..=max)
+                .clamp_range(min as f32..=max as f32)
                 .custom_formatter(|v, _| format_time(Duration::from_secs_f64(v.max(0.0))))
                 .custom_parser(|s| {
                     // Accept "12.5" or "1:02.5".
@@ -385,7 +538,16 @@ fn time_field(ui: &mut egui::Ui, value: &mut Duration, min: f32, max: f32) -> bo
         )
         .changed();
     if changed {
-        *value = Duration::from_secs_f32(secs);
+        *secs = val as f64;
+    }
+    changed
+}
+
+fn time_field(ui: &mut egui::Ui, value: &mut Duration, min: f32, max: f32) -> bool {
+    let mut secs = value.as_secs_f64();
+    let changed = time_field_secs(ui, &mut secs, min as f64, max as f64);
+    if changed {
+        *value = Duration::from_secs_f64(secs);
     }
     changed
 }
@@ -445,11 +607,6 @@ fn selection(ui: &mut egui::Ui, theme: &MonetTheme, state: &mut PlayerState) -> 
                 if m3_small_button(ui, theme, t("Reset")).clicked() {
                     state.trim_start = Duration::ZERO;
                     state.trim_end = state.duration;
-                }
-                ui.add_space(6.0);
-                if m3_switch_labeled(ui, theme, &mut state.loop_cut_preview, t("Loop selection")).changed() && state.loop_cut_preview {
-                    seek = Some(state.trim_start);
-                    state.play();
                 }
             });
         });

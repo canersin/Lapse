@@ -28,7 +28,7 @@ pub fn render_fullscreen(player_state: &mut Option<PlayerState>, theme: &MonetTh
     let (_, video_resp) = ui.allocate_exact_size(full.size(), Sense::click());
     let painter = ui.painter_at(full);
     painter.rect_filled(full, 0.0, Color32::BLACK);
-    if let Some(texture) = &state.texture {
+    if state.has_video() {
         let aspect = state.orig_width as f32 / state.orig_height.max(1) as f32;
         let mut size = full.size();
         if size.x / aspect > size.y {
@@ -37,7 +37,7 @@ pub fn render_fullscreen(player_state: &mut Option<PlayerState>, theme: &MonetTh
             size.y = size.x / aspect;
         }
         let image = Rect::from_center_size(full.center(), size);
-        painter.image(texture.id(), image, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+        state.paint_video(ui, image);
     } else {
         ui.put(Rect::from_center_size(full.center(), Vec2::splat(40.0)), egui::Spinner::new().size(40.0));
     }
