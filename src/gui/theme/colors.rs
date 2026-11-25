@@ -2,6 +2,7 @@ use eframe::egui::Color32;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MonetPaletteKind {
+    Midnight,
     Lavender,
     Ocean,
     Mint,
@@ -18,11 +19,19 @@ pub enum MonetPaletteKind {
     Catppuccin,
     Monokai,
     Vaporwave,
+    Amber,
+    Teal,
+    RosePine,
+    Solarized,
+    Everforest,
+    Kanagawa,
+    Ayu,
 }
 
 #[allow(dead_code)]
 impl MonetPaletteKind {
-    pub const ALL: [MonetPaletteKind; 16] = [
+    pub const ALL: [MonetPaletteKind; 24] = [
+        MonetPaletteKind::Midnight,
         MonetPaletteKind::Lavender,
         MonetPaletteKind::Ocean,
         MonetPaletteKind::Mint,
@@ -39,6 +48,13 @@ impl MonetPaletteKind {
         MonetPaletteKind::Catppuccin,
         MonetPaletteKind::Monokai,
         MonetPaletteKind::Vaporwave,
+        MonetPaletteKind::Amber,
+        MonetPaletteKind::Teal,
+        MonetPaletteKind::RosePine,
+        MonetPaletteKind::Solarized,
+        MonetPaletteKind::Everforest,
+        MonetPaletteKind::Kanagawa,
+        MonetPaletteKind::Ayu,
     ];
 
     pub fn from_config_name(name: &str) -> Self {
@@ -46,11 +62,12 @@ impl MonetPaletteKind {
             .iter()
             .copied()
             .find(|k| format!("{:?}", k).eq_ignore_ascii_case(name))
-            .unwrap_or(Self::Lavender)
+            .unwrap_or(Self::Midnight)
     }
 
     pub fn display_name(&self) -> &'static str {
         match self {
+            Self::Midnight => "Midnight Black",
             Self::Lavender => "Lavender",
             Self::Ocean => "Ocean Blue",
             Self::Mint => "Sage Mint",
@@ -67,11 +84,19 @@ impl MonetPaletteKind {
             Self::Catppuccin => "Catppuccin Mocha",
             Self::Monokai => "Monokai Pro",
             Self::Vaporwave => "Vaporwave Neon",
+            Self::Amber => "Amber Glow",
+            Self::Teal => "Deep Teal",
+            Self::RosePine => "Rosé Pine",
+            Self::Solarized => "Solarized Dark",
+            Self::Everforest => "Everforest",
+            Self::Kanagawa => "Kanagawa Wave",
+            Self::Ayu => "Ayu Mirage",
         }
     }
 
     pub fn swatch_color(&self) -> Color32 {
         match self {
+            Self::Midnight => Color32::from_rgb(226, 226, 230),
             Self::Lavender => Color32::from_rgb(208, 188, 255),
             Self::Ocean => Color32::from_rgb(168, 199, 250),
             Self::Mint => Color32::from_rgb(128, 213, 180),
@@ -88,6 +113,13 @@ impl MonetPaletteKind {
             Self::Catppuccin => Color32::from_rgb(203, 166, 247),
             Self::Monokai => Color32::from_rgb(255, 216, 102),
             Self::Vaporwave => Color32::from_rgb(255, 113, 206),
+            Self::Amber => Color32::from_rgb(255, 191, 0),
+            Self::Teal => Color32::from_rgb(78, 222, 212),
+            Self::RosePine => Color32::from_rgb(235, 188, 186),
+            Self::Solarized => Color32::from_rgb(38, 139, 210),
+            Self::Everforest => Color32::from_rgb(167, 192, 128),
+            Self::Kanagawa => Color32::from_rgb(126, 156, 216),
+            Self::Ayu => Color32::from_rgb(255, 173, 102),
         }
     }
 }
@@ -145,6 +177,53 @@ pub struct MonetTheme {
 impl MonetTheme {
     pub fn from_kind(kind: MonetPaletteKind) -> Self {
         match kind {
+            MonetPaletteKind::Midnight => Self {
+                kind,
+                primary: Color32::from_rgb(226, 226, 230),
+                on_primary: Color32::from_rgb(24, 24, 26),
+                primary_container: Color32::from_rgb(58, 58, 62),
+                on_primary_container: Color32::from_rgb(238, 238, 242),
+
+                secondary: Color32::from_rgb(196, 196, 202),
+                on_secondary: Color32::from_rgb(28, 28, 30),
+                secondary_container: Color32::from_rgb(66, 66, 70),
+                on_secondary_container: Color32::from_rgb(226, 226, 230),
+
+                tertiary: Color32::from_rgb(176, 176, 182),
+                on_tertiary: Color32::from_rgb(24, 24, 26),
+                tertiary_container: Color32::from_rgb(50, 50, 54),
+                on_tertiary_container: Color32::from_rgb(218, 218, 222),
+
+                background: Color32::from_rgb(14, 14, 15),
+                surface: Color32::from_rgb(14, 14, 15),
+                surface_dim: Color32::from_rgb(10, 10, 11),
+                surface_bright: Color32::from_rgb(54, 54, 56),
+                surface_container_lowest: Color32::from_rgb(10, 10, 10),
+                surface_container_low: Color32::from_rgb(19, 19, 20),
+                surface_container: Color32::from_rgb(28, 28, 30),
+                surface_container_high: Color32::from_rgb(38, 38, 40),
+                surface_container_highest: Color32::from_rgb(48, 48, 50),
+
+                on_surface: Color32::from_rgb(242, 240, 247),
+                on_surface_variant: Color32::from_rgb(190, 190, 196),
+
+                outline: Color32::from_rgb(140, 140, 146),
+                outline_variant: Color32::from_rgb(66, 66, 72),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
             MonetPaletteKind::Lavender => Self {
                 kind,
                 primary: Color32::from_rgb(208, 188, 255),
@@ -572,7 +651,7 @@ impl MonetTheme {
                 kind,
                 primary: Color32::from_rgb(136, 192, 208),
                 on_primary: Color32::from_rgb(46, 52, 64),
-                primary_container: Color32::from_rgb(94, 129, 172),
+                primary_container: Color32::from_rgb(76, 106, 145),
                 on_primary_container: Color32::from_rgb(236, 239, 244),
 
                 secondary: Color32::from_rgb(129, 161, 193),
@@ -736,7 +815,7 @@ impl MonetTheme {
                 surface_container_highest: Color32::from_rgb(80, 73, 69),
 
                 on_surface: Color32::from_rgb(235, 219, 178),
-                on_surface_variant: Color32::from_rgb(168, 153, 132),
+                on_surface_variant: Color32::from_rgb(189, 174, 147),
 
                 outline: Color32::from_rgb(124, 111, 100),
                 outline_variant: Color32::from_rgb(60, 56, 54),
@@ -783,7 +862,7 @@ impl MonetTheme {
                 surface_container_highest: Color32::from_rgb(88, 91, 112),
 
                 on_surface: Color32::from_rgb(205, 214, 244),
-                on_surface_variant: Color32::from_rgb(166, 173, 200),
+                on_surface_variant: Color32::from_rgb(186, 194, 222),
 
                 outline: Color32::from_rgb(108, 112, 134),
                 outline_variant: Color32::from_rgb(69, 71, 90),
@@ -895,6 +974,395 @@ impl MonetTheme {
                 warning: Color32::from_rgb(255, 251, 150),
                 warning_container: Color32::from_rgb(95, 90, 20),
             },
+
+            MonetPaletteKind::Amber => Self {
+                kind,
+                primary: Color32::from_rgb(255, 191, 0),
+                on_primary: Color32::from_rgb(45, 27, 0),
+                primary_container: Color32::from_rgb(75, 48, 0),
+                on_primary_container: Color32::from_rgb(255, 223, 153),
+
+                secondary: Color32::from_rgb(222, 196, 160),
+                on_secondary: Color32::from_rgb(46, 36, 20),
+                secondary_container: Color32::from_rgb(68, 54, 34),
+                on_secondary_container: Color32::from_rgb(240, 222, 190),
+
+                tertiary: Color32::from_rgb(242, 168, 118),
+                on_tertiary: Color32::from_rgb(52, 26, 8),
+                tertiary_container: Color32::from_rgb(78, 42, 20),
+                on_tertiary_container: Color32::from_rgb(255, 219, 194),
+
+                background: Color32::from_rgb(18, 17, 14),
+                surface: Color32::from_rgb(18, 17, 14),
+                surface_dim: Color32::from_rgb(14, 13, 11),
+                surface_bright: Color32::from_rgb(56, 53, 46),
+                surface_container_lowest: Color32::from_rgb(11, 10, 8),
+                surface_container_low: Color32::from_rgb(21, 19, 16),
+                surface_container: Color32::from_rgb(30, 28, 24),
+                surface_container_high: Color32::from_rgb(40, 37, 32),
+                surface_container_highest: Color32::from_rgb(50, 47, 41),
+
+                on_surface: Color32::from_rgb(235, 228, 218),
+                on_surface_variant: Color32::from_rgb(202, 194, 180),
+
+                outline: Color32::from_rgb(146, 138, 124),
+                outline_variant: Color32::from_rgb(72, 66, 56),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
+            MonetPaletteKind::Teal => Self {
+                kind,
+                primary: Color32::from_rgb(78, 222, 212),
+                on_primary: Color32::from_rgb(0, 55, 52),
+                primary_container: Color32::from_rgb(0, 82, 78),
+                on_primary_container: Color32::from_rgb(175, 245, 240),
+
+                secondary: Color32::from_rgb(178, 212, 208),
+                on_secondary: Color32::from_rgb(30, 52, 50),
+                secondary_container: Color32::from_rgb(52, 75, 73),
+                on_secondary_container: Color32::from_rgb(205, 235, 232),
+
+                tertiary: Color32::from_rgb(165, 205, 230),
+                on_tertiary: Color32::from_rgb(20, 50, 65),
+                tertiary_container: Color32::from_rgb(45, 72, 90),
+                on_tertiary_container: Color32::from_rgb(200, 235, 255),
+
+                background: Color32::from_rgb(14, 20, 20),
+                surface: Color32::from_rgb(14, 20, 20),
+                surface_dim: Color32::from_rgb(11, 16, 16),
+                surface_bright: Color32::from_rgb(50, 60, 60),
+                surface_container_lowest: Color32::from_rgb(9, 14, 14),
+                surface_container_low: Color32::from_rgb(19, 24, 24),
+                surface_container: Color32::from_rgb(28, 34, 34),
+                surface_container_high: Color32::from_rgb(38, 44, 44),
+                surface_container_highest: Color32::from_rgb(48, 54, 54),
+
+                on_surface: Color32::from_rgb(222, 232, 230),
+                on_surface_variant: Color32::from_rgb(190, 204, 202),
+
+                outline: Color32::from_rgb(135, 152, 150),
+                outline_variant: Color32::from_rgb(62, 78, 76),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
+            MonetPaletteKind::RosePine => Self {
+                kind,
+                primary: Color32::from_rgb(235, 188, 186),
+                on_primary: Color32::from_rgb(45, 25, 30),
+                primary_container: Color32::from_rgb(88, 48, 56),
+                on_primary_container: Color32::from_rgb(255, 225, 225),
+
+                secondary: Color32::from_rgb(156, 207, 216),
+                on_secondary: Color32::from_rgb(25, 45, 50),
+                secondary_container: Color32::from_rgb(49, 90, 105),
+                on_secondary_container: Color32::from_rgb(215, 245, 250),
+
+                tertiary: Color32::from_rgb(196, 167, 231),
+                on_tertiary: Color32::from_rgb(40, 25, 60),
+                tertiary_container: Color32::from_rgb(72, 50, 95),
+                on_tertiary_container: Color32::from_rgb(240, 225, 255),
+
+                background: Color32::from_rgb(25, 23, 36),
+                surface: Color32::from_rgb(25, 23, 36),
+                surface_dim: Color32::from_rgb(20, 18, 30),
+                surface_bright: Color32::from_rgb(68, 64, 94),
+                surface_container_lowest: Color32::from_rgb(17, 15, 25),
+                surface_container_low: Color32::from_rgb(27, 25, 39),
+                surface_container: Color32::from_rgb(36, 33, 52),
+                surface_container_high: Color32::from_rgb(46, 42, 65),
+                surface_container_highest: Color32::from_rgb(57, 53, 79),
+
+                on_surface: Color32::from_rgb(224, 222, 244),
+                on_surface_variant: Color32::from_rgb(160, 156, 184),
+
+                outline: Color32::from_rgb(110, 106, 134),
+                outline_variant: Color32::from_rgb(65, 60, 85),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
+            MonetPaletteKind::Solarized => Self {
+                kind,
+                primary: Color32::from_rgb(38, 139, 210),
+                on_primary: Color32::from_rgb(0, 20, 26),
+                primary_container: Color32::from_rgb(15, 68, 98),
+                on_primary_container: Color32::from_rgb(175, 225, 255),
+
+                secondary: Color32::from_rgb(42, 161, 152),
+                on_secondary: Color32::from_rgb(0, 43, 54),
+                secondary_container: Color32::from_rgb(15, 80, 80),
+                on_secondary_container: Color32::from_rgb(180, 240, 235),
+
+                tertiary: Color32::from_rgb(181, 137, 0),
+                on_tertiary: Color32::from_rgb(40, 30, 0),
+                tertiary_container: Color32::from_rgb(85, 65, 0),
+                on_tertiary_container: Color32::from_rgb(255, 235, 170),
+
+                background: Color32::from_rgb(0, 34, 43),
+                surface: Color32::from_rgb(0, 34, 43),
+                surface_dim: Color32::from_rgb(0, 28, 36),
+                surface_bright: Color32::from_rgb(30, 78, 92),
+                surface_container_lowest: Color32::from_rgb(0, 24, 30),
+                surface_container_low: Color32::from_rgb(0, 34, 43),
+                surface_container: Color32::from_rgb(7, 44, 54),
+                surface_container_high: Color32::from_rgb(14, 54, 66),
+                surface_container_highest: Color32::from_rgb(22, 65, 78),
+
+                on_surface: Color32::from_rgb(238, 232, 213),
+                on_surface_variant: Color32::from_rgb(147, 161, 161),
+
+                outline: Color32::from_rgb(101, 123, 131),
+                outline_variant: Color32::from_rgb(40, 75, 85),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
+            MonetPaletteKind::Everforest => Self {
+                kind,
+                primary: Color32::from_rgb(167, 192, 128),
+                on_primary: Color32::from_rgb(35, 45, 30),
+                primary_container: Color32::from_rgb(58, 75, 48),
+                on_primary_container: Color32::from_rgb(220, 240, 195),
+
+                secondary: Color32::from_rgb(131, 192, 146),
+                on_secondary: Color32::from_rgb(25, 48, 35),
+                secondary_container: Color32::from_rgb(45, 75, 55),
+                on_secondary_container: Color32::from_rgb(205, 240, 215),
+
+                tertiary: Color32::from_rgb(230, 152, 117),
+                on_tertiary: Color32::from_rgb(50, 28, 15),
+                tertiary_container: Color32::from_rgb(80, 48, 30),
+                on_tertiary_container: Color32::from_rgb(255, 220, 200),
+
+                background: Color32::from_rgb(35, 42, 46),
+                surface: Color32::from_rgb(35, 42, 46),
+                surface_dim: Color32::from_rgb(28, 34, 38),
+                surface_bright: Color32::from_rgb(75, 86, 92),
+                surface_container_lowest: Color32::from_rgb(24, 29, 32),
+                surface_container_low: Color32::from_rgb(34, 41, 45),
+                surface_container: Color32::from_rgb(44, 52, 57),
+                surface_container_high: Color32::from_rgb(54, 63, 69),
+                surface_container_highest: Color32::from_rgb(65, 75, 81),
+
+                on_surface: Color32::from_rgb(211, 198, 170),
+                on_surface_variant: Color32::from_rgb(167, 176, 164),
+
+                outline: Color32::from_rgb(133, 146, 137),
+                outline_variant: Color32::from_rgb(68, 78, 76),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
+            MonetPaletteKind::Kanagawa => Self {
+                kind,
+                primary: Color32::from_rgb(126, 156, 216),
+                on_primary: Color32::from_rgb(24, 32, 52),
+                primary_container: Color32::from_rgb(44, 60, 95),
+                on_primary_container: Color32::from_rgb(210, 225, 255),
+
+                secondary: Color32::from_rgb(122, 168, 159),
+                on_secondary: Color32::from_rgb(20, 42, 38),
+                secondary_container: Color32::from_rgb(42, 75, 70),
+                on_secondary_container: Color32::from_rgb(205, 235, 230),
+
+                tertiary: Color32::from_rgb(230, 195, 132),
+                on_tertiary: Color32::from_rgb(45, 36, 18),
+                tertiary_container: Color32::from_rgb(78, 62, 34),
+                on_tertiary_container: Color32::from_rgb(255, 235, 200),
+
+                background: Color32::from_rgb(22, 22, 29),
+                surface: Color32::from_rgb(22, 22, 29),
+                surface_dim: Color32::from_rgb(17, 17, 23),
+                surface_bright: Color32::from_rgb(62, 62, 80),
+                surface_container_lowest: Color32::from_rgb(15, 15, 20),
+                surface_container_low: Color32::from_rgb(25, 25, 33),
+                surface_container: Color32::from_rgb(35, 35, 46),
+                surface_container_high: Color32::from_rgb(46, 46, 59),
+                surface_container_highest: Color32::from_rgb(58, 58, 74),
+
+                on_surface: Color32::from_rgb(220, 215, 186),
+                on_surface_variant: Color32::from_rgb(170, 166, 150),
+
+                outline: Color32::from_rgb(114, 113, 130),
+                outline_variant: Color32::from_rgb(65, 65, 80),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+
+            MonetPaletteKind::Ayu => Self {
+                kind,
+                primary: Color32::from_rgb(255, 173, 102),
+                on_primary: Color32::from_rgb(48, 28, 12),
+                primary_container: Color32::from_rgb(85, 48, 20),
+                on_primary_container: Color32::from_rgb(255, 225, 200),
+
+                secondary: Color32::from_rgb(115, 208, 255),
+                on_secondary: Color32::from_rgb(15, 42, 58),
+                secondary_container: Color32::from_rgb(30, 68, 92),
+                on_secondary_container: Color32::from_rgb(205, 240, 255),
+
+                tertiary: Color32::from_rgb(149, 230, 203),
+                on_tertiary: Color32::from_rgb(18, 48, 40),
+                tertiary_container: Color32::from_rgb(35, 75, 65),
+                on_tertiary_container: Color32::from_rgb(205, 250, 240),
+
+                background: Color32::from_rgb(25, 30, 40),
+                surface: Color32::from_rgb(25, 30, 40),
+                surface_dim: Color32::from_rgb(19, 23, 31),
+                surface_bright: Color32::from_rgb(65, 74, 94),
+                surface_container_lowest: Color32::from_rgb(17, 20, 27),
+                surface_container_low: Color32::from_rgb(26, 31, 42),
+                surface_container: Color32::from_rgb(36, 43, 57),
+                surface_container_high: Color32::from_rgb(47, 55, 72),
+                surface_container_highest: Color32::from_rgb(58, 67, 86),
+
+                on_surface: Color32::from_rgb(203, 204, 198),
+                on_surface_variant: Color32::from_rgb(160, 166, 178),
+
+                outline: Color32::from_rgb(112, 120, 132),
+                outline_variant: Color32::from_rgb(60, 68, 80),
+
+                error: Color32::from_rgb(255, 180, 171),
+                error_container: Color32::from_rgb(147, 0, 10),
+                on_error: Color32::from_rgb(105, 0, 5),
+                on_error_container: Color32::from_rgb(255, 218, 214),
+
+                success: Color32::from_rgb(130, 217, 156),
+                success_container: Color32::from_rgb(0, 83, 34),
+                on_success: Color32::from_rgb(0, 57, 20),
+                on_success_container: Color32::from_rgb(159, 246, 183),
+
+                warning: Color32::from_rgb(255, 186, 40),
+                warning_container: Color32::from_rgb(88, 63, 0),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// WCAG contrast ratio between two colors.
+    fn contrast(a: Color32, b: Color32) -> f32 {
+        let lum = |c: Color32| {
+            let ch = |v: u8| {
+                let v = v as f32 / 255.0;
+                if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+            };
+            0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+        };
+        let (x, y) = (lum(a) + 0.05, lum(b) + 0.05);
+        x.max(y) / x.min(y)
+    }
+
+    #[test]
+    fn new_installs_start_on_midnight() {
+        assert_eq!(MonetPaletteKind::ALL[0], MonetPaletteKind::Midnight);
+        assert_eq!(MonetPaletteKind::from_config_name(&crate::config::Config::default().theme_palette), MonetPaletteKind::Midnight);
+        assert_eq!(MonetPaletteKind::from_config_name("lavender"), MonetPaletteKind::Lavender);
+        assert_eq!(MonetPaletteKind::from_config_name("gone"), MonetPaletteKind::Midnight);
+    }
+
+    /// The picker shows 1 to 4 columns; a multiple of 12 fills every row at each width.
+    #[test]
+    fn palettes_fill_the_picker_grid() {
+        assert_eq!(MonetPaletteKind::ALL.len() % 12, 0);
+        let names: std::collections::HashSet<_> = MonetPaletteKind::ALL.iter().map(|k| k.display_name()).collect();
+        assert_eq!(names.len(), MonetPaletteKind::ALL.len());
+    }
+
+    #[test]
+    fn every_palette_is_readable_and_layered() {
+        for kind in MonetPaletteKind::ALL {
+            let t = MonetTheme::from_kind(kind);
+            assert_eq!(t.kind, kind);
+            for (fg, bg, what) in [
+                (t.on_surface, t.surface_container, "text"),
+                (t.on_surface_variant, t.surface_container_high, "secondary text"),
+                (t.on_primary, t.primary, "text on accent"),
+                (t.on_primary_container, t.primary_container, "text on tonal"),
+            ] {
+                assert!(contrast(fg, bg) >= 4.5, "{:?}: {} contrast {:.1}", kind, what, contrast(fg, bg));
+            }
+            let layers = [
+                t.surface_container_lowest,
+                t.surface_container_low,
+                t.surface_container,
+                t.surface_container_high,
+                t.surface_container_highest,
+            ];
+            for pair in layers.windows(2) {
+                assert!(contrast(pair[0], t.on_surface) > contrast(pair[1], t.on_surface), "{:?}: surfaces don't step up", kind);
+            }
         }
     }
 }

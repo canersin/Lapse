@@ -9,6 +9,7 @@ use crate::gui::components::number_field::{m3_number_field, m3_number_field_u32,
 use crate::gui::components::button::{m3_small_button, m3_small_button_colored};
 use crate::gui::components::chip::m3_chip;
 use crate::gui::components::card::m3_section_card;
+use crate::gui::components::dropdown::m3_dropdown;
 use crate::gui::components::icon::{m3_vector_icon, IconKind};
 use crate::gui::components::input::m3_setting_row;
 use crate::gui::components::motion::m3_switch;
@@ -87,27 +88,17 @@ pub fn render_quality_and_buffer(
             preset_picker(ui, theme, config, "settings_preset");
             ui.add_space(14.0);
 
-            m3_setting_row(
-                ui,
-                theme,
-                t("Replay buffer storage"),
-                t("RAM is fastest. Disk saves memory for long or 4K buffers."),
-                |ui| {
-                    let options = [("ram".to_string(), t("RAM")), ("disk".to_string(), t("Disk"))];
-                    segmented(ui, theme, "replay_storage", &mut config.replay_storage, &options, 80.0);
-                },
-            );
-
             let (w, h) = capture_resolution(config, monitors);
             let mb = estimated_buffer_mb(config, w, h);
             let ram = total_ram_mb();
-            let heavy = config.replay_storage == "ram" && ram > 0.0 && mb > ram * 0.25;
+            let is_ram = config.replay_storage == "ram";
+            let heavy = is_ram && ram > 0.0 && mb > ram * 0.25;
             let (color, icon) = if heavy {
                 (theme.error, IconKind::Warning)
             } else {
                 (theme.primary, IconKind::Info)
             };
-            let where_ = if config.replay_storage == "ram" { t("of RAM") } else { t("of disk space") };
+            let where_ = if is_ram { t("of RAM") } else { t("of disk space") };
             let size = if mb >= 1024.0 { format!("{:.1} GB", mb / 1024.0) } else { format!("{:.0} MB", mb) };
             let mut text = format!(
                 "{} {} {} ({}x{}, {} fps, {} s)",
@@ -144,6 +135,9 @@ pub fn render_quality_and_buffer(
 
 /// Cached `gpu-screen-recorder --list-application-audio` output.
 fn app_audio_list(ui: &egui::Ui, refresh: bool) -> Vec<String> {
+    if cfg!(windows) {
+        return Vec::new();
+    }
     let id = egui::Id::new("lapse_app_audio_list");
     if !refresh {
         if let Some(list) = ui.data(|d| d.get_temp::<Vec<String>>(id)) {
@@ -166,6 +160,9 @@ fn app_audio_list(ui: &egui::Ui, refresh: bool) -> Vec<String> {
 }
 
 pub fn render_audio_tracks(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
+    if cfg!(windows) {
+        return;
+    }
     m3_section_card(
         ui,
         theme,
@@ -244,21 +241,14 @@ pub fn render_save_behavior(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut 
             m3_setting_row(ui, theme, t("Show a notification"), t("Shows the clip name and the game folder it went into."), |ui| {
                 m3_switch(ui, theme, &mut config.save_notification);
             });
-            ui.separator();
-            m3_setting_row(
-                ui,
-                theme,
-                t("Clear the buffer after saving"),
-                t("Off: two saves close together share footage, nothing is lost. On: each clip only has what happened since the last save."),
-                |ui| {
-                    m3_switch(ui, theme, &mut config.restart_replay_on_save);
-                },
-            );
         },
     );
 }
 
 pub fn render_hdr(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
+    if cfg!(windows) {
+        return;
+    }
     m3_section_card(ui, theme, Some(IconKind::Video), t("HDR"), None, |ui| {
         m3_setting_row(
             ui,
@@ -289,20 +279,19 @@ pub fn render_discord(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config
                 });
             }
             ui.separator();
-            let show_id = egui::Id::new("lapse_webhook_visible");
-            let mut show: bool = ui.data(|d| d.get_temp(show_id)).unwrap_or(false);
             m3_setting_row(ui, theme, t("Webhook link"), t("For sending clips. In Discord: Channel settings > Integrations > Webhooks > New webhook > Copy URL. Kept only in your config file."), |ui| {
-                if m3_small_button(ui, theme, if show { t("Hide") } else { t("Show") }).clicked() {
-                    show = !show;
-                }
-                ui.add(
-                    egui::TextEdit::singleline(&mut config.discord_webhook)
-                        .password(!show)
-                        .hint_text("https://discord.com/api/webhooks/...")
-                        .desired_width(300.0),
+                crate::gui::components::text_field::m3_text_field(
+                    ui,
+                    theme,
+                    &mut config.discord_webhook,
+                    crate::gui::components::text_field::TextFieldOpts {
+                        hint: "https://discord.com/api/webhooks/...",
+                        width: Some(280.0),
+                        password: true,
+                        ..Default::default()
+                    },
                 );
             });
-            ui.data_mut(|d| d.insert_temp(show_id, show));
             let url = config.discord_webhook.trim();
             if !url.is_empty() && !crate::discord::is_webhook(url) {
                 ui.label(RichText::new(t("This doesn't look like a Discord webhook link.")).size(12.0).color(theme.error));
@@ -367,7 +356,17 @@ fn pick_sound_file(current: &str) -> Option<std::path::PathBuf> {
         .map(|p| p.to_path_buf())
         .or_else(|| directories::UserDirs::new().and_then(|u| u.audio_dir().map(|d| d.to_path_buf())))
         .filter(|p| p.is_dir())
-        .unwrap_or_else(|| std::path::PathBuf::from("/usr/share/sounds"));
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                std::env::var_os("SystemRoot")
+                    .map(std::path::PathBuf::from)
+                    .map(|p| p.join("Media"))
+                    .filter(|p| p.is_dir())
+                    .unwrap_or_else(std::env::temp_dir)
+            } else {
+                std::path::PathBuf::from("/usr/share/sounds")
+            }
+        });
     // Globs are case-sensitive in some pickers: list both cases.
     let exts: Vec<String> = crate::sound::EXTENSIONS.iter().flat_map(|e| [e.to_string(), e.to_uppercase()]).collect();
     rfd::FileDialog::new()
@@ -402,11 +401,28 @@ pub fn render_storage_limit(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut 
                 let color = if would_delete.is_empty() { theme.on_surface_variant } else { theme.error };
                 ui.label(RichText::new(text).size(12.5).color(color));
             }
+            ui.separator();
+            m3_setting_row(
+                ui,
+                theme,
+                t("Delete old clips"),
+                t("Favorites and clips with a note or tag are always kept."),
+                |ui| {
+                    m3_switch(ui, theme, &mut config.cleanup_old_enabled);
+                    if config.cleanup_old_enabled {
+                        let opts = NumberOpts { suffix: t(" days"), speed: 1.0, width: 84.0, ..Default::default() };
+                        m3_number_field_u32(ui, theme, "cleanup_old_days", &mut config.cleanup_old_days, 1..=365, opts);
+                    }
+                },
+            );
         },
     );
 }
 
 pub fn render_hotkey_backend(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
+    if cfg!(windows) {
+        return;
+    }
     m3_setting_row(
         ui,
         theme,
@@ -447,10 +463,18 @@ pub fn render_share_privacy(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut 
 pub fn render_language(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
     crate::gui::components::card::m3_card(ui, theme, |ui| {
         m3_setting_row(ui, theme, t("Language"), t("Language of the Lapse window."), |ui| {
-            let options: Vec<(String, &str)> = crate::gui::i18n::LANGUAGES.iter().map(|(c, n)| (c.to_string(), *n)).collect();
-            if segmented(ui, theme, "settings_language", &mut config.language, &options, 96.0).is_some() {
-                crate::gui::i18n::set_language(&config.language);
-            }
+            let current_name = crate::gui::i18n::languages()
+                .iter()
+                .find(|l| l.code == config.language)
+                .map(|l| l.name)
+                .unwrap_or("English");
+            m3_dropdown(ui, theme, "settings_language", current_name, 200.0, |ui| {
+                for lang in crate::gui::i18n::languages() {
+                    if ui.selectable_value(&mut config.language, lang.code.to_string(), lang.name).clicked() {
+                        crate::gui::i18n::set_language(&config.language);
+                    }
+                }
+            });
         });
     });
 }

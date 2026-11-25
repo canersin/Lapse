@@ -1,6 +1,7 @@
-use eframe::egui::{self, Align2, FontId, Margin, RichText, Stroke, Vec2};
+use eframe::egui::{self, Align2, FontId, Margin, Rect, RichText, Stroke, Vec2};
 use crate::gui::components::button::{m3_small_button, m3_small_button_colored};
 use crate::gui::components::confirm::request_delete;
+use crate::gui::components::logo::draw_lapse_logo;
 use crate::gui::components::thumb::clip_thumbnail;
 use crate::gui::i18n::t;
 use std::time::{Duration, Instant};
@@ -79,7 +80,9 @@ pub fn render_home(
                 .inner_margin(Margin::same(20.0))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
+                        let (logo_slot, _) = ui.allocate_exact_size(Vec2::splat(56.0), egui::Sense::hover());
+                        ui.add_space(16.0);
+                        let title_block = ui.vertical(|ui| {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(t("Gameplay Replay Studio")).size(24.0).strong().color(theme.on_surface));
                                 ui.add_space(8.0);
@@ -127,6 +130,11 @@ pub fn render_home(
                                 }
                             });
                         });
+                        let rect = Rect::from_center_size(
+                            egui::pos2(logo_slot.center().x, title_block.response.rect.center().y),
+                            Vec2::splat(56.0),
+                        );
+                        draw_lapse_logo(ui.painter(), rect, theme.surface_container_highest, theme.on_surface);
                     });
                 });
 
@@ -141,7 +149,12 @@ pub fn render_home(
                 }
             }
 
-            if config.dual_gpu {
+            if let Some(err) = crate::hotkeys::last_hotkey_error() {
+                ui.add_space(8.0);
+                notice_banner(ui, theme, egui::Color32::from_rgb(240, 180, 60), IconKind::Warning, &err, false);
+            }
+
+            if !cfg!(windows) && config.dual_gpu {
                 ui.add_space(10.0);
                 render_dual_gpu_strip(ui, theme, config, gpus, status);
             }
@@ -347,7 +360,11 @@ fn toggle_audio_source(
     let mem_id = egui::Id::new(if is_mic { "last_mic_device" } else { "last_output_device" });
     let field = if is_mic { &mut config.audio_input } else { &mut config.audio_output };
     if enable {
-        let fallback = if is_mic { "default_input" } else { "default_output" };
+        let fallback = if is_mic {
+            if cfg!(windows) { "" } else { "default_input" }
+        } else {
+            if cfg!(windows) { "" } else { "default_output" }
+        };
         let restored: String = ui.data(|d| d.get_temp(mem_id)).unwrap_or_else(|| fallback.to_string());
         *field = restored;
     } else {

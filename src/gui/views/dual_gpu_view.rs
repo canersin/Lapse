@@ -22,6 +22,9 @@ pub fn render_advanced(
     gpus: &[GpuDevice],
     status: Option<&StatusResponse>,
 ) {
+    if cfg!(windows) {
+        return;
+    }
     let id = egui::Id::new("lapse_advanced_open");
     let mut open: bool = ui.data(|d| d.get_temp(id)).unwrap_or(false);
     let resp = egui::Frame::none()
@@ -37,7 +40,7 @@ pub fn render_advanced(
                 chevron(ui, r.center(), turn, theme.on_surface_variant);
                 ui.add_space(4.0);
                 ui.vertical(|ui| {
-                    ui.label(M3Typography::title_medium(t("Advanced"), theme.on_surface));
+                    ui.label(M3Typography::title_medium(t("Dual GPU"), theme.on_surface));
                     ui.label(M3Typography::body_medium(
                         t("Dual GPU. Not needed on most systems: Lapse records on the card your monitor is plugged into."),
                         theme.on_surface_variant,

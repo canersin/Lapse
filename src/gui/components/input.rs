@@ -202,28 +202,14 @@ pub fn m3_search_input(
     query: &mut String,
     placeholder: &str,
 ) {
-    egui::Frame::none()
-        .fill(theme.surface_container_high)
-        .rounding(M3Shapes::FULL)
-        .inner_margin(Margin::symmetric(14.0, 8.0))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(t("Search")).color(theme.on_surface_variant).size(12.0).strong());
-                ui.add_space(4.0);
-
-                let edit = egui::TextEdit::singleline(query)
-                    .hint_text(RichText::new(placeholder).color(theme.on_surface_variant))
-                    .text_color(theme.on_surface)
-                    .frame(false)
-                    .min_size(Vec2::new(ui.available_width() - 30.0, 20.0));
-
-                ui.add(edit);
-
-                if !query.is_empty() {
-                    if ui.small_button("X").clicked() {
-                        query.clear();
-                    }
-                }
-            });
-        });
+    crate::gui::components::text_field::m3_text_field(
+        ui,
+        theme,
+        query,
+        crate::gui::components::text_field::TextFieldOpts {
+            hint: placeholder,
+            width: Some(ui.available_width()),
+            ..Default::default()
+        },
+    );
 }

@@ -1,4 +1,6 @@
-use eframe::egui::{self, Color32, FontId, Margin, Response, RichText, Stroke, Vec2};
+use eframe::egui::{self, Color32, FontId, Margin, Response, RichText, Stroke, Vec2, WidgetText};
+use crate::gui::components::icon::{draw_vector_icon, IconKind};
+use crate::gui::components::motion::{hover_t, lerp_color};
 use crate::gui::theme::{M3Shapes, M3Typography, MonetTheme};
 
 #[allow(dead_code)]
@@ -45,24 +47,64 @@ pub fn m3_chip(
     text: &str,
     is_selected: bool,
 ) -> Response {
-    let (bg, fg, stroke) = if is_selected {
-        (theme.primary_container, theme.on_primary_container, Stroke::NONE)
+    let text_color = if is_selected {
+        theme.on_primary_container
     } else {
-        (theme.surface_container_high, theme.on_surface_variant, Stroke::new(1.0_f32, theme.outline_variant))
+        theme.on_surface
+    };
+    let fg = if ui.is_enabled() {
+        text_color
+    } else {
+        text_color.gamma_multiply(0.4)
     };
 
-    let btn = egui::Button::new(
-        RichText::new(text)
-            .size(12.0)
-            .strong()
-            .color(fg),
-    )
-    .fill(bg)
-    .stroke(stroke)
-    .rounding(M3Shapes::FULL)
-    .min_size(Vec2::new(50.0, 28.0));
+    let widget_text = WidgetText::from(RichText::new(text).size(13.0).strong().color(fg));
+    let galley = widget_text.into_galley(ui, Some(false), f32::INFINITY, egui::TextStyle::Button);
 
-    ui.add(btn)
+    const HEIGHT: f32 = 34.0;
+    const PAD: f32 = 16.0;
+    const ICON_SIZE: f32 = 12.0;
+    const ICON_GAP: f32 = 6.0;
+
+    let content_w = if is_selected {
+        ICON_SIZE + ICON_GAP + galley.size().x
+    } else {
+        galley.size().x
+    };
+    let size = Vec2::new(content_w + PAD * 2.0, HEIGHT);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let enabled = ui.is_enabled();
+        let h = if enabled { hover_t(ui, &resp) } else { 0.0 };
+        let p = ui.painter();
+
+        if is_selected {
+            p.rect_filled(rect, M3Shapes::FULL, lerp_color(theme.primary_container, theme.on_primary_container, 0.08 * h));
+            let icon_center = egui::pos2(rect.left() + PAD + ICON_SIZE / 2.0, rect.center().y);
+            draw_vector_icon(p, icon_center, ICON_SIZE, IconKind::Check, fg);
+            let text_pos = egui::pos2(
+                rect.left() + PAD + ICON_SIZE + ICON_GAP,
+                rect.center().y - galley.size().y / 2.0,
+            );
+            p.galley(text_pos, galley, fg);
+        } else {
+            let fill = lerp_color(Color32::TRANSPARENT, theme.surface_container_high, h);
+            p.rect_filled(rect, M3Shapes::FULL, fill);
+            p.rect_stroke(rect, M3Shapes::FULL, Stroke::new(1.0_f32, theme.outline_variant));
+            let text_pos = egui::pos2(
+                rect.left() + PAD,
+                rect.center().y - galley.size().y / 2.0,
+            );
+            p.galley(text_pos, galley, fg);
+        }
+    }
+
+    if ui.is_enabled() {
+        resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        resp
+    }
 }
 
 pub fn m3_badge(

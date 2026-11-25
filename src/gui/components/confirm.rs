@@ -32,32 +32,9 @@ pub fn request_delete_many(ctx: &egui::Context, clips: Vec<(PathBuf, PathBuf)>) 
     }
 }
 
-fn trash_available() -> bool {
-    use std::sync::OnceLock;
-    static GIO: OnceLock<bool> = OnceLock::new();
-    *GIO.get_or_init(|| {
-        std::process::Command::new("gio")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    })
-}
-
 /// Moves the clip to the trash, or deletes it when there is no trash. Returns false on failure.
 fn remove_clip(path: &Path) -> bool {
-    if trash_available() {
-        let trashed = std::process::Command::new("gio")
-            .arg("trash")
-            .arg(path)
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if trashed {
-            return true;
-        }
-    }
-    std::fs::remove_file(path).is_ok()
+    trash::delete(path).is_ok() || std::fs::remove_file(path).is_ok()
 }
 
 pub enum DeleteOutcome {
@@ -95,7 +72,6 @@ pub fn render_delete_dialog(ctx: &egui::Context, theme: &MonetTheme, save_path: 
     } else {
         first.path.file_name().unwrap_or_default().to_string_lossy().to_string()
     };
-    let to_trash = trash_available();
 
     egui::Area::new(id().with("dialog"))
         .order(egui::Order::Foreground)
@@ -116,17 +92,12 @@ pub fn render_delete_dialog(ctx: &egui::Context, theme: &MonetTheme, save_path: 
                     ui.add_space(8.0);
                     ui.add(egui::Label::new(RichText::new(&name).size(13.0).monospace().color(theme.on_surface)).truncate(true));
                     ui.add_space(4.0);
-                    let note = if to_trash {
-                        t("It will be moved to the trash, so you can still restore it.")
-                    } else {
-                        t("It will be deleted permanently.")
-                    };
+                    let note = t("It will be moved to the trash, so you can still restore it.");
                     ui.label(RichText::new(note).size(12.5).color(theme.on_surface_variant));
                     ui.add_space(18.0);
                     let row = Vec2::new(ui.available_width(), 40.0);
                     ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let label = if to_trash { t("Move to trash") } else { t("Delete") };
-                        if m3_danger_button(ui, theme, label).clicked() {
+                        if m3_danger_button(ui, theme, t("Move to trash")).clicked() {
                             confirmed = true;
                         }
                         ui.add_space(8.0);

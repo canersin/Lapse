@@ -69,12 +69,6 @@ pub fn render_nav_rail(
                                         .color(theme.on_surface)
                                         .extra_letter_spacing(1.0),
                                 );
-                                ui.label(
-                                    RichText::new(t("REPLAY"))
-                                        .size(10.0)
-                                        .strong()
-                                        .color(theme.primary),
-                                );
                             });
                         });
                 });
@@ -303,7 +297,7 @@ pub fn render_nav_rail(
             let btn_w = ui.available_width() - 8.0;
 
             ui.vertical_centered(|ui| {
-                if !is_installed {
+                if !cfg!(windows) && !is_installed {
                     ui.label(RichText::new(t("Missing gpu-screen-recorder")).size(11.0).color(theme.error));
                 } else if waiting_for_game {
                     // Game mode on the desktop: the buffer starts by itself when a game opens.
@@ -356,7 +350,7 @@ fn status_dot(ui: &egui::Ui, theme: &MonetTheme, center: egui::Pos2, is_recordin
 }
 
 fn status_text(is_recording: bool, is_installed: bool, waiting_for_game: bool) -> &'static str {
-    if !is_installed {
+    if !cfg!(windows) && !is_installed {
         t("Missing gpu-screen-recorder")
     } else if waiting_for_game {
         t("WAITING FOR GAME")
@@ -398,7 +392,7 @@ fn render_compact_controls(
         ui.add_space(flex_space);
     }
     ui.vertical_centered(|ui| {
-        if !is_installed {
+        if !cfg!(windows) && !is_installed {
             let (rect, resp) = ui.allocate_exact_size(Vec2::splat(40.0), egui::Sense::hover());
             draw_vector_icon(ui.painter(), rect.center(), 18.0, IconKind::Warning, theme.error);
             resp.on_hover_text(t("Missing gpu-screen-recorder"));

@@ -18,10 +18,13 @@ use super::state::{GuiState, NavigationTab};
 use super::theme::{apply_theme, M3Shapes, MonetPaletteKind, MonetTheme};
 use super::views::about_view::render_about;
 use super::views::home_view::render_home;
-use super::views::hotkey_view::handle_hotkey_binding;
+use super::views::hotkey_view::{bind_hotkey, handle_hotkey_binding};
 use super::views::library_view::{render_library, ClipMetadata};
 use super::views::player_view::{render_fullscreen, render_player, PlayerState};
 use super::views::settings_view::{render_settings, SettingsHardwareContext};
+
+/// ~144 frames a second at most.
+const MIN_FRAME_TIME: Duration = Duration::from_micros(6900);
 
 pub struct LapseApp {
     pub config: Config,
@@ -40,8 +43,11 @@ pub struct LapseApp {
     pub last_status_poll: Instant,
     /// The shortcut waiting for a key press in Settings > Hotkeys.
     pub binding_hotkey: Option<crate::hotkeys::HotkeyEvent>,
+    prev_binding_hotkey: Option<crate::hotkeys::HotkeyEvent>,
+    capture_start_seq: u64,
     pub player_state: Option<PlayerState>,
     last_open_request_check: Instant,
+    last_frame: Instant,
     /// Whether we put the window in fullscreen for the player.
     window_fullscreen: bool,
     /// Set when another launch asked this window to come to the front.
@@ -76,7 +82,7 @@ fn spawn_ipc_worker(
                 };
                 let changed = guard
                     .as_ref()
-                    .map(|o| o.recording != s.recording || o.mode != s.mode)
+                    .map(|o| o.recording != s.recording || o.mode != s.mode || o.captured_hotkey_seq != s.captured_hotkey_seq)
                     .unwrap_or(true);
                 *guard = Some(s);
                 changed
@@ -100,7 +106,30 @@ pub fn dispatch_ipc(cmd: ipc::Command) {
 
 impl LapseApp {
     pub fn new(cc: &eframe::CreationContext<'_>, config: Config) -> Self {
+        #[cfg(not(windows))]
+        {
+            use raw_window_handle::HasDisplayHandle;
+            if let Ok(dh) = cc.display_handle() {
+                match dh.as_raw() {
+                    raw_window_handle::RawDisplayHandle::Wayland(w) => {
+                        crate::gui::views::trimmer::mpv::set_native_display(
+                            crate::gui::views::trimmer::mpv::NativeDisplay::Wayland(w.display.as_ptr() as usize),
+                        );
+                    }
+                    raw_window_handle::RawDisplayHandle::Xlib(x) => {
+                        if let Some(p) = x.display {
+                            crate::gui::views::trimmer::mpv::set_native_display(
+                                crate::gui::views::trimmer::mpv::NativeDisplay::X11(p.as_ptr() as usize),
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         egui_extras::install_image_loaders(&cc.egui_ctx);
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         if config.check_updates {
             crate::update::check_for_updates();
         }
@@ -135,8 +164,11 @@ impl LapseApp {
             last_status: None,
             last_status_poll: Instant::now().checked_sub(Duration::from_secs(10)).unwrap(),
             binding_hotkey: None,
+            prev_binding_hotkey: None,
+            capture_start_seq: 0,
             player_state: None,
             last_open_request_check: Instant::now(),
+            last_frame: Instant::now(),
             window_fullscreen: false,
             requests: crate::gui::single_instance::listen(cc.egui_ctx.clone()),
             shared_status,
@@ -147,6 +179,37 @@ impl LapseApp {
 
     pub fn send_ipc_command(cmd: ipc::Command) -> Option<ipc::Response> {
         ipc::send(cmd)
+    }
+
+    fn check_binding_transition(&mut self) {
+        if self.binding_hotkey != self.prev_binding_hotkey {
+            if self.prev_binding_hotkey.is_none() && self.binding_hotkey.is_some() {
+                let _ = LapseApp::send_ipc_command(ipc::Command::CaptureHotkeys(true));
+                if let Some(ipc::Response::Status(s)) = LapseApp::send_ipc_command(ipc::Command::GetStatus) {
+                    self.capture_start_seq = s.captured_hotkey_seq;
+                    self.last_status = Some(s);
+                } else {
+                    self.capture_start_seq = self
+                        .shared_status
+                        .lock()
+                        .ok()
+                        .and_then(|g| g.as_ref().map(|s| s.captured_hotkey_seq))
+                        .or_else(|| self.last_status.as_ref().map(|s| s.captured_hotkey_seq))
+                        .unwrap_or(0);
+                }
+            } else if self.prev_binding_hotkey.is_some() && self.binding_hotkey.is_none() {
+                let _ = LapseApp::send_ipc_command(ipc::Command::CaptureHotkeys(false));
+            } else if self.binding_hotkey.is_some() {
+                self.capture_start_seq = self
+                    .shared_status
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.as_ref().map(|s| s.captured_hotkey_seq))
+                    .or_else(|| self.last_status.as_ref().map(|s| s.captured_hotkey_seq))
+                    .unwrap_or(0);
+            }
+            self.prev_binding_hotkey = self.binding_hotkey;
+        }
     }
 }
 
@@ -230,6 +293,37 @@ impl eframe::App for LapseApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // vsync is off, so every input event repaints at once: a 1000 Hz mouse while
+        // scrolling or resizing meant ~1000 frames a second. Cap the frame rate instead.
+        let since = self.last_frame.elapsed();
+        if since < MIN_FRAME_TIME {
+            std::thread::sleep(MIN_FRAME_TIME - since);
+        }
+        self.last_frame = Instant::now();
+
+        #[cfg(not(windows))]
+        if matches!(crate::gui::views::trimmer::mpv::get_native_display(), crate::gui::views::trimmer::mpv::NativeDisplay::None) {
+            use raw_window_handle::HasDisplayHandle;
+            if let Ok(dh) = _frame.display_handle() {
+                match dh.as_raw() {
+                    raw_window_handle::RawDisplayHandle::Wayland(w) => {
+                        crate::gui::views::trimmer::mpv::set_native_display(
+                            crate::gui::views::trimmer::mpv::NativeDisplay::Wayland(w.display.as_ptr() as usize),
+                        );
+                    }
+                    raw_window_handle::RawDisplayHandle::Xlib(x) => {
+                        if let Some(p) = x.display {
+                            crate::gui::views::trimmer::mpv::set_native_display(
+                                crate::gui::views::trimmer::mpv::NativeDisplay::X11(p.as_ptr() as usize),
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
         crate::gui::i18n::set_language(&self.config.language);
         let target_theme = MonetTheme::from_kind(self.palette_kind);
         if self.theme != target_theme {
@@ -247,12 +341,23 @@ impl eframe::App for LapseApp {
             // Wayland may refuse to move focus; then at least flag the window.
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
-        handle_hotkey_binding(&mut self.binding_hotkey, &mut self.config, ctx);
+        if let Some(cleared) = handle_hotkey_binding(&mut self.binding_hotkey, &mut self.config, ctx) {
+            for event in cleared {
+                self.toasts.push(
+                    ToastKind::Info,
+                    format!("{} {}", t(event.portal_info().1), t("no longer has a key: that key is now used here.")),
+                );
+            }
+            let _ = self.config.save();
+            Config::sync_autostart(self.config.autostart);
+            dispatch_ipc(ipc::Command::ReloadConfig);
+        }
+        self.check_binding_transition();
         self.take_open_request(ctx);
         // Keep the clip list (and the nav counters) current on every page.
         crate::gui::views::library_view::refresh_clips(&mut self.cached_clips, &mut self.last_clip_refresh, &self.config.save_path);
 
-        if self.last_status_poll.elapsed().as_millis() > 100 {
+        if self.last_status_poll.elapsed().as_millis() > 100 || self.binding_hotkey.is_some() {
             self.last_status_poll = Instant::now();
             let latest = self
                 .shared_status
@@ -261,10 +366,43 @@ impl eframe::App for LapseApp {
                 .and_then(|g| g.as_ref().cloned());
             if let Some(s) = latest {
                 self.announce_status_change(&s);
+                if let Some(target) = self.binding_hotkey {
+                    if s.captured_hotkey_seq > self.capture_start_seq {
+                        if let Some(ev) = s.captured_hotkey {
+                            if ev == target {
+                                self.binding_hotkey = None;
+                            } else {
+                                let (code, mods) = {
+                                    let (k, m) = self.config.hotkey_mut(ev);
+                                    (*k, *m)
+                                };
+                                let cleared = bind_hotkey(&mut self.config, target, code, mods);
+                                for event in cleared {
+                                    self.toasts.push(
+                                        ToastKind::Info,
+                                        format!(
+                                            "{} {}",
+                                            t(event.portal_info().1),
+                                            t("no longer has a key: that key is now used here.")
+                                        ),
+                                    );
+                                }
+                                let _ = self.config.save();
+                                Config::sync_autostart(self.config.autostart);
+                                dispatch_ipc(ipc::Command::ReloadConfig);
+                                self.binding_hotkey = None;
+                            }
+                        }
+                    }
+                }
                 self.last_status = Some(s);
             }
         }
+        self.check_binding_transition();
         ctx.request_repaint_after(Duration::from_millis(500));
+        if self.binding_hotkey.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(50));
+        }
 
         if let Ok(st) = crate::share::GLOBAL_SHARE_STATE.lock() {
             if st.is_sharing && st.public_url.is_none() {
@@ -330,7 +468,7 @@ impl eframe::App for LapseApp {
                 let theme = self.theme;
                 let status = self.last_status.as_ref();
                 let is_recording = status.map(|s| s.recording).unwrap_or(false);
-                let is_installed = status.map(|s| s.is_installed).unwrap_or(true);
+                let is_installed = if cfg!(windows) { true } else { status.map(|s| s.is_installed).unwrap_or(true) };
                 let waiting_for_game = status.map(|s| s.waiting_for_game).unwrap_or(false);
                 sidebar_toggled = render_nav_rail(
                     ui,
@@ -364,6 +502,7 @@ impl eframe::App for LapseApp {
             if previous_tab == NavigationTab::Settings {
                 let _ = self.config.save();
                 Config::sync_autostart(self.config.autostart);
+                crate::gui::platform::sync_autostart_windows(self.config.autostart);
                 dispatch_ipc(ipc::Command::ReloadConfig);
             }
             if let Some(mut player) = self.player_state.take() {
@@ -608,6 +747,8 @@ impl eframe::App for LapseApp {
             let _ = self.config.save();
             dispatch_ipc(ipc::Command::ReloadConfig);
         }
+
+        self.check_binding_transition();
     }
 }
 

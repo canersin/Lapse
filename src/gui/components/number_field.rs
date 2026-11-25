@@ -61,7 +61,7 @@ pub fn m3_number_field(
     if let Some(mut text) = editing {
         let p = ui.painter();
         p.rect_filled(rect, M3Shapes::FULL, theme.surface_container_highest);
-        p.rect_stroke(rect, M3Shapes::FULL, Stroke::new(1.5_f32, theme.primary));
+        p.rect_stroke(rect, M3Shapes::FULL, Stroke::new(2.0_f32, theme.primary));
         let inner = rect.shrink2(Vec2::new(10.0, 3.0));
         let edit = ui.put(
             inner,
@@ -118,7 +118,7 @@ pub fn m3_number_field(
         let h = hover_t(ui, &resp).max(if resp.dragged() { 1.0 } else { 0.0 });
         let p = ui.painter();
         p.rect_filled(rect, M3Shapes::FULL, lerp_color(theme.surface_container_highest, theme.primary_container, h * 0.35));
-        p.rect_stroke(rect, M3Shapes::FULL, Stroke::new(1.0_f32, lerp_color(theme.outline_variant, theme.primary, h)));
+        p.rect_stroke(rect, M3Shapes::FULL, Stroke::new(1.0_f32, lerp_color(theme.outline_variant, theme.outline, h)));
         let (text, color) = match opts.zero_text {
             Some(z) if *value == 0.0 => (z.to_string(), theme.on_surface_variant),
             _ => (format!("{:.*}{}", opts.decimals, value, opts.suffix), theme.on_surface),
@@ -155,34 +155,18 @@ pub fn m3_number_field_u32(
     changed
 }
 
-/// Text box in the same pill style as the number field.
+/// Text box in Material 3 style (forwards to `text_field::m3_text_field`).
 pub fn m3_text_field(ui: &mut egui::Ui, theme: &MonetTheme, text: &mut String, hint: &str, width: f32) -> egui::Response {
-    let height = ui.spacing().interact_size.y.clamp(26.0, 30.0);
-    // The pill goes under the text, so keep its place before the text box is drawn.
-    let bg = ui.painter().add(egui::Shape::Noop);
-    let edit = egui::Frame::none()
-        .inner_margin(egui::Margin::symmetric(12.0, 0.0))
-        .show(ui, |ui| {
-            ui.add_sized(
-                [width - 24.0, height],
-                egui::TextEdit::singleline(text)
-                    .frame(false)
-                    .font(FontId::proportional(12.5))
-                    .text_color(theme.on_surface)
-                    .hint_text(egui::RichText::new(hint).color(theme.outline))
-                    .vertical_align(egui::Align::Center),
-            )
-        });
-    let (rect, edit) = (edit.response.rect, edit.inner);
-    let focused = edit.has_focus();
-    let h = if focused { 1.0 } else { hover_t(ui, &edit) };
-    let fill = lerp_color(theme.surface_container_highest, theme.primary_container, h * 0.2);
-    let stroke = Stroke::new(if focused { 1.5_f32 } else { 1.0 }, lerp_color(theme.outline_variant, theme.primary, h));
-    ui.painter().set(
-        bg,
-        egui::Shape::Vec(vec![egui::Shape::rect_filled(rect, M3Shapes::FULL, fill), egui::Shape::rect_stroke(rect, M3Shapes::FULL, stroke)]),
-    );
-    edit
+    crate::gui::components::text_field::m3_text_field(
+        ui,
+        theme,
+        text,
+        crate::gui::components::text_field::TextFieldOpts {
+            hint,
+            width: Some(width),
+            ..Default::default()
+        },
+    )
 }
 
 #[cfg(test)]

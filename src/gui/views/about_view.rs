@@ -5,7 +5,7 @@ use crate::gui::components::button::m3_outlined_button;
 use crate::gui::components::card::m3_card;
 use crate::gui::components::chip::{m3_badge, m3_keycap};
 use crate::gui::components::header::m3_page_header;
-use crate::gui::components::icon::{draw_vector_icon, IconKind};
+use crate::gui::components::logo::draw_lapse_logo;
 use crate::gui::theme::{M3Typography, MonetTheme};
 use crate::update::{check_for_updates, get_update_state, UpdateStatus};
 
@@ -53,11 +53,16 @@ pub fn render_about(
     record_hotkey_str: &str,
     ui: &mut egui::Ui,
 ) {
+    let subtitle = if cfg!(windows) {
+        t("Next-generation game replay capture & lossless trimming for Windows")
+    } else {
+        t("Next-generation game replay capture & lossless trimming for Linux")
+    };
     m3_page_header(
         ui,
         theme,
         t("About Lapse"),
-        t("Next-generation game replay capture & lossless trimming for Linux"),
+        subtitle,
         |_| {},
     );
 
@@ -67,8 +72,7 @@ pub fn render_about(
             m3_card(ui, theme, |ui| {
                 ui.horizontal(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(64.0), egui::Sense::hover());
-                    ui.painter().circle_filled(rect.center(), 32.0, theme.primary_container);
-                    draw_vector_icon(ui.painter(), rect.center(), 34.0, IconKind::Bolt, theme.primary);
+                    draw_lapse_logo(ui.painter(), rect, theme.surface_container_highest, theme.on_surface);
 
                     ui.add_space(16.0);
                     ui.vertical(|ui| {
@@ -80,6 +84,8 @@ pub fn render_about(
                             m3_badge(ui, theme, t("GPL-3.0 License"), Some(theme.primary));
                             ui.add_space(4.0);
                             m3_badge(ui, theme, t("Lossless Cut Stream-Copy"), Some(theme.success));
+                            ui.add_space(4.0);
+                            m3_badge(ui, theme, if cfg!(windows) { "Windows" } else { "Linux" }, Some(theme.primary));
                         });
                     });
                 });
@@ -184,11 +190,21 @@ pub fn render_about(
                     ui.separator();
                     ui.add_space(8.0);
 
-                    for line in [
-                        "Capture: gpu-screen-recorder with hardware encoding (VAAPI, NVENC) and a replay buffer in RAM or on disk.",
-                        "Interface: Rust, eframe and egui, native on Wayland and X11.",
-                        "Editing: ffmpeg, with instant stream-copy cuts or exact re-encoded cuts.",
-                    ] {
+                    let lines: &[&str] = if cfg!(windows) {
+                        &[
+                            "Capture: Windows Graphics Capture and Media Foundation hardware encoding (H.264, H.265, AV1).",
+                            "Interface: Rust, eframe and egui, native on Windows.",
+                            "Editing: ffmpeg, with instant stream-copy cuts or exact re-encoded cuts.",
+                        ]
+                    } else {
+                        &[
+                            "Capture: gpu-screen-recorder with hardware encoding (VAAPI, NVENC) and a replay buffer in RAM or on disk.",
+                            "Interface: Rust, eframe and egui, native on Wayland and X11.",
+                            "Editing: ffmpeg, with instant stream-copy cuts or exact re-encoded cuts.",
+                        ]
+                    };
+
+                    for line in lines {
                         ui.label(M3Typography::body_medium(&format!("- {}", t(line)), theme.on_surface_variant));
                     }
                 });

@@ -5,7 +5,9 @@ use eframe::egui::{self, Align2, Color32, FontId, Id, Margin, Pos2, Rect, RichTe
 use crate::config::{estimated_buffer_mb, Config};
 use crate::gui::components::button::{m3_filled_button_sized, m3_outlined_button};
 use crate::gui::components::chip::m3_keycap;
+use crate::gui::components::dropdown::m3_dropdown;
 use crate::gui::components::icon::{draw_vector_icon, IconKind};
+use crate::gui::components::logo::draw_lapse_logo;
 use crate::gui::components::input::m3_duration_slider_input;
 use crate::gui::components::motion::{ease_out, m3_switch_labeled, MEDIUM};
 use crate::gui::components::segmented::segmented;
@@ -26,7 +28,7 @@ enum Step {
 
 fn steps(gpus: &[GpuDevice]) -> Vec<Step> {
     let mut s = vec![Step::Language, Step::Quality, Step::Hotkeys];
-    if gpus.len() >= 2 {
+    if !cfg!(windows) && gpus.len() >= 2 {
         s.push(Step::DualGpu);
     }
     s.push(Step::Done);
@@ -142,13 +144,26 @@ fn title(ui: &mut egui::Ui, theme: &MonetTheme, icon: IconKind, text: &str, sub:
 }
 
 fn language_step(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
+    ui.vertical_centered(|ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(72.0), egui::Sense::hover());
+        draw_lapse_logo(ui.painter(), rect, theme.surface_container_highest, theme.on_surface);
+    });
+    ui.add_space(14.0);
     title(ui, theme, IconKind::Globe, t("Welcome to Lapse"), t("Lapse keeps the last moments of your game in a buffer, so you can save a clip after something cool happens."));
     ui.label(RichText::new(t("Language")).size(13.0).strong().color(theme.on_surface));
     ui.add_space(6.0);
-    let options: Vec<(String, &str)> = i18n::LANGUAGES.iter().map(|(c, n)| (c.to_string(), *n)).collect();
-    if segmented(ui, theme, "welcome_lang", &mut config.language, &options, 110.0).is_some() {
-        i18n::set_language(&config.language);
-    }
+    let current_name = i18n::languages()
+        .iter()
+        .find(|l| l.code == config.language)
+        .map(|l| l.name)
+        .unwrap_or("English");
+    m3_dropdown(ui, theme, "welcome_lang", current_name, 200.0, |ui| {
+        for lang in i18n::languages() {
+            if ui.selectable_value(&mut config.language, lang.code.to_string(), lang.name).clicked() {
+                i18n::set_language(&config.language);
+            }
+        }
+    });
 }
 
 fn quality_step(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
@@ -184,7 +199,7 @@ fn hotkey_step(ui: &mut egui::Ui, theme: &MonetTheme, config: &mut Config) {
         ui.end_row();
     });
     ui.add_space(14.0);
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+    if !cfg!(windows) && std::env::var_os("WAYLAND_DISPLAY").is_some() {
         ui.label(
             RichText::new(t("On Wayland your desktop will ask once to allow these shortcuts. Click Allow so they work in every game."))
                 .size(12.5)
