@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 
@@ -38,36 +37,23 @@ pub fn check_for_updates() {
     }
 
     thread::spawn(move || {
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-H",
-                "User-Agent: Lapse-App",
-                "--max-time",
-                "6",
-                "https://api.github.com/repos/canersin/Lapse/releases/latest",
-            ])
-            .output();
+        let output = crate::http::get_json("https://api.github.com/repos/canersin/Lapse/releases/latest", &[], 6);
 
         let new_status = match output {
-            Ok(out) if out.status.success() => {
-                if let Ok(text) = String::from_utf8(out.stdout) {
-                    if let Ok(rel) = serde_json::from_str::<GitHubRelease>(&text) {
-                        let remote_ver = rel.tag_name.trim_start_matches('v');
-                        let current_ver = env!("CARGO_PKG_VERSION");
-                        if is_newer_version(remote_ver, current_ver) {
-                            UpdateStatus::Available {
-                                version: rel.tag_name,
-                                url: rel.html_url.unwrap_or_else(|| "https://github.com/canersin/Lapse/releases".into()),
-                            }
-                        } else {
-                            UpdateStatus::UpToDate
+            Ok(json) => {
+                if let Ok(rel) = serde_json::from_value::<GitHubRelease>(json) {
+                    let remote_ver = rel.tag_name.trim_start_matches('v');
+                    let current_ver = env!("CARGO_PKG_VERSION");
+                    if is_newer_version(remote_ver, current_ver) {
+                        UpdateStatus::Available {
+                            version: rel.tag_name,
+                            url: rel.html_url.unwrap_or_else(|| "https://github.com/canersin/Lapse/releases".into()),
                         }
                     } else {
-                        UpdateStatus::Error("Could not parse release data".into())
+                        UpdateStatus::UpToDate
                     }
                 } else {
-                    UpdateStatus::Error("Invalid response encoding".into())
+                    UpdateStatus::Error("Could not parse release data".into())
                 }
             }
             _ => UpdateStatus::Error("Network check failed".into()),
