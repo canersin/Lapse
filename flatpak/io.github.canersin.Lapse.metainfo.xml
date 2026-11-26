@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.canersin.Lapse</id>
+  <id>io.github.canersin.Lapse</id>
   <name>Lapse</name>
   <summary>Save the last moments of your game and trim clips</summary>
   <metadata_license>CC0-1.0</metadata_license>
@@ -21,7 +21,11 @@
       <li>Discord Rich Presence and sharing links</li>
     </ul>
   </description>
-  <launchable type="desktop-id">com.canersin.Lapse.desktop</launchable>
+  <launchable type="desktop-id">io.github.canersin.Lapse.desktop</launchable>
+  <!-- The Flatpak was com.canersin.Lapse up to 2.2.1. -->
+  <replaces>
+    <id>com.canersin.Lapse</id>
+  </replaces>
   <url type="homepage">https://github.com/canersin/Lapse</url>
   <url type="bugtracker">https://github.com/canersin/Lapse/issues</url>
   <content_rating type="oars-1.1"/>

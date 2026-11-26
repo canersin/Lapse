@@ -236,10 +236,18 @@ Download `Lapse-<version>-x86_64.flatpak` from the
 
 ```bash
 flatpak install --user ./Lapse-<version>-x86_64.flatpak
-flatpak run com.canersin.Lapse
+flatpak run io.github.canersin.Lapse
 ```
 
 gpu-screen-recorder is included in the Flatpak, and ffmpeg comes with its runtime.
+
+Up to 2.2.1 the Flatpak was called `com.canersin.Lapse`. To move your settings and
+remove the old one:
+
+```bash
+cp -rn ~/.var/app/com.canersin.Lapse/. ~/.var/app/io.github.canersin.Lapse/
+flatpak uninstall com.canersin.Lapse
+```
 
 ### AppImage
 
@@ -600,7 +608,7 @@ Then remove the program the same way you installed it:
 | .rpm | `sudo dnf remove lapse` |
 | Gentoo | `sudo emerge --deselect media-video/lapse && sudo emerge --depclean` |
 | Nix | `nix profile remove lapse`, or remove it from your NixOS configuration |
-| Flatpak | `flatpak uninstall com.canersin.Lapse` |
+| Flatpak | `flatpak uninstall io.github.canersin.Lapse` |
 | AppImage | Delete the file |
 | `install.sh` | `./uninstall.sh` from the same folder (`sudo` for a system install; `--purge` also deletes settings) |
 | `make install` | `make uninstall` (with `sudo` if you installed with it) |
@@ -657,7 +665,7 @@ recipes (`dist/aur/`), Gentoo ebuild and Flatpak follow from it. Single ones:
 | `packaging/rpm/lapse.spec` | .rpm recipe |
 | `packaging/gentoo/ebuild.py` | writes the ebuild, with the crates from `Cargo.lock` |
 | `packaging/appimage/AppRun` | AppImage start script |
-| `com.canersin.Lapse.yml`, `flatpak/` | Flatpak manifest; `flatpak/cargo-sources.py` lists the crates |
+| `io.github.canersin.Lapse.yml`, `flatpak/` | Flatpak manifest; `flatpak/cargo-sources.py` lists the crates |
 | `flake.nix`, `nix/package.nix` | Nix flake |
 
 ## Reporting problems

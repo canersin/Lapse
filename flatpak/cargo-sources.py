@@ -5,7 +5,7 @@ Run it again after Cargo.lock changes:
 
     python3 flatpak/cargo-sources.py
 
-It writes flatpak/cargo-sources.json, which com.canersin.Lapse.yml includes.
+It writes flatpak/cargo-sources.json, which io.github.canersin.Lapse.yml includes.
 Only crates.io packages are supported (Lapse has no git dependencies).
 """
 

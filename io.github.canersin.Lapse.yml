@@ -1,4 +1,4 @@
-id: com.canersin.Lapse
+id: io.github.canersin.Lapse
 runtime: org.freedesktop.Platform
 # 26.08 ships ffmpeg and ffprobe with every encoder Lapse uses (x264, VA-API, AAC,
 # Opus, MP3), so they are not built here.
@@ -88,7 +88,7 @@ modules:
   - name: kms-server-proxy
     buildsystem: simple
     build-commands:
-      - sed -i "s/com\.dec05eba\.gpu_screen_recorder/com.canersin.Lapse/g" main.c
+      - sed -i "s/com\.dec05eba\.gpu_screen_recorder/io.github.canersin.Lapse/g" main.c
       - ./build.sh
       - install -Dm755 kms-server-proxy "$FLATPAK_DEST/bin/kms-server-proxy"
     sources:
@@ -100,7 +100,7 @@ modules:
   - name: gpu-screen-recorder
     buildsystem: simple
     build-commands:
-      - sed -i "s/com\.dec05eba\.gpu_screen_recorder/com.canersin.Lapse/g" kms/client/kms_client.c
+      - sed -i "s/com\.dec05eba\.gpu_screen_recorder/io.github.canersin.Lapse/g" kms/client/kms_client.c
       - meson setup build
       - meson configure --prefix=$FLATPAK_DEST --buildtype=release -Dcapabilities=false
         -Dsystemd=false -Dnvidia_suspend_fix=false -Dffmpeg_static=true -Dstrip=true build
@@ -166,13 +166,14 @@ modules:
     build-commands:
       - cargo build --release --offline --locked
       - install -Dm755 target/release/Lapse $FLATPAK_DEST/bin/lapse
-      - install -Dm644 assets/lapse.desktop $FLATPAK_DEST/share/applications/com.canersin.Lapse.desktop
-      - desktop-file-edit --set-icon=com.canersin.Lapse --set-key=StartupWMClass --set-value=com.canersin.Lapse
-        $FLATPAK_DEST/share/applications/com.canersin.Lapse.desktop
-      - install -Dm644 assets/icon.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/com.canersin.Lapse.png
-      - install -Dm644 assets/lapse.svg $FLATPAK_DEST/share/icons/hicolor/scalable/apps/com.canersin.Lapse.svg
-      - install -Dm644 assets/lapse-symbolic.svg $FLATPAK_DEST/share/icons/hicolor/symbolic/apps/com.canersin.Lapse-symbolic.svg
-      - install -Dm644 flatpak/com.canersin.Lapse.metainfo.xml $FLATPAK_DEST/share/metainfo/com.canersin.Lapse.metainfo.xml
+      - install -Dm644 assets/lapse.desktop $FLATPAK_DEST/share/applications/io.github.canersin.Lapse.desktop
+      - desktop-file-edit --set-icon=io.github.canersin.Lapse --set-key=StartupWMClass --set-value=io.github.canersin.Lapse
+        --set-key=X-Flatpak-RenamedFrom --set-value=com.canersin.Lapse.desktop
+        $FLATPAK_DEST/share/applications/io.github.canersin.Lapse.desktop
+      - install -Dm644 assets/icon.png $FLATPAK_DEST/share/icons/hicolor/512x512/apps/io.github.canersin.Lapse.png
+      - install -Dm644 assets/lapse.svg $FLATPAK_DEST/share/icons/hicolor/scalable/apps/io.github.canersin.Lapse.svg
+      - install -Dm644 assets/lapse-symbolic.svg $FLATPAK_DEST/share/icons/hicolor/symbolic/apps/io.github.canersin.Lapse-symbolic.svg
+      - install -Dm644 flatpak/io.github.canersin.Lapse.metainfo.xml $FLATPAK_DEST/share/metainfo/io.github.canersin.Lapse.metainfo.xml
     sources:
       - type: dir
         path: .

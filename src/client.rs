@@ -89,7 +89,7 @@ pub fn run_gui_client() -> anyhow::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Lapse - Replay Studio")
             // Wayland app id and X11 WM_CLASS: docks and task bars find the desktop file
-            // by it (lapse.desktop, or com.canersin.Lapse.desktop in the Flatpak).
+            // by it (lapse.desktop, or io.github.canersin.Lapse.desktop in the Flatpak).
             .with_app_id(std::env::var("FLATPAK_ID").unwrap_or_else(|_| "lapse".into()))
             .with_icon(icon_data)
             .with_inner_size([1120.0, 720.0])

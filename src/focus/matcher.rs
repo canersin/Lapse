@@ -22,7 +22,7 @@ pub fn is_game(window: &Window) -> Option<bool> {
 }
 
 fn is_lapse(class: &str) -> bool {
-    class.eq_ignore_ascii_case("lapse") || class.eq_ignore_ascii_case("com.canersin.Lapse")
+    class.eq_ignore_ascii_case("lapse") || class.eq_ignore_ascii_case("io.github.canersin.Lapse")
 }
 
 fn decide(window: &Window, pid: Option<u32>, comm: &str, games: &[GameEntry], game_pid: Option<u32>) -> bool {

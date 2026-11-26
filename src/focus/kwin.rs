@@ -3,11 +3,11 @@
 use super::{Report, Source, Window};
 use std::time::Duration;
 
-const SERVICE: &str = "com.canersin.Lapse.Focus";
+const SERVICE: &str = "io.github.canersin.Lapse.Focus";
 const SCRIPT_NAME: &str = "lapse-focus";
 const SCRIPT: &str = r#"
 function report(w) {
-    callDBus("com.canersin.Lapse.Focus", "/", "com.canersin.Lapse.Focus", "Focused",
+    callDBus("io.github.canersin.Lapse.Focus", "/", "io.github.canersin.Lapse.Focus", "Focused",
         w ? String(w.pid) : "", w ? String(w.resourceClass) : "", w ? String(w.caption) : "", w && w.output ? String(w.output.name) : "");
 }
 workspace.windowActivated.connect(report);
@@ -16,7 +16,7 @@ report(workspace.activeWindow);
 
 struct Listener;
 
-#[zbus::interface(name = "com.canersin.Lapse.Focus")]
+#[zbus::interface(name = "io.github.canersin.Lapse.Focus")]
 impl Listener {
     /// `pid` is empty when no window has the focus.
     fn focused(&self, pid: String, class: String, title: String, output: String) {
