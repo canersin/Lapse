@@ -6827,19 +6827,6 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
-    "url": "https://static.crates.io/crates/windows-capture/windows-capture-1.5.0.crate",
-    "sha256": "3a4df73e95feddb9ec1a7e9c2ca6323b8c97d5eeeff78d28f1eccdf19c882b24",
-    "dest": "cargo/vendor/windows-capture-1.5.0"
-  },
-  {
-    "type": "inline",
-    "contents": "{\"package\": \"3a4df73e95feddb9ec1a7e9c2ca6323b8c97d5eeeff78d28f1eccdf19c882b24\", \"files\": {}}",
-    "dest": "cargo/vendor/windows-capture-1.5.0",
-    "dest-filename": ".cargo-checksum.json"
-  },
-  {
-    "type": "archive",
-    "archive-type": "tar-gzip",
     "url": "https://static.crates.io/crates/windows-collections/windows-collections-0.2.0.crate",
     "sha256": "3beeceb5e5cfd9eb1d76b381630e82c4241ccd0d27f1a39ed41b2760b255c5e8",
     "dest": "cargo/vendor/windows-collections-0.2.0"

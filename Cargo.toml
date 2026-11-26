@@ -72,7 +72,7 @@ windows = { version = "0.61", features = [
     "Security_Authorization_AppCapabilityAccess",
     "Storage_Streams",
 ] }
-windows-capture = { path = "vendor/windows-capture" }
+windows-capture = { path = "third_party/windows-capture" }
 wasapi = "0.27"
 mp4 = "0.14"
 
