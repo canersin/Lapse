@@ -82,9 +82,13 @@ modules:
         url: https://github.com/irql-notlessorequal/intel-vaapi-driver/archive/refs/tags/2.4.5.tar.gz
         sha256: f89f77bc46ec6f46392c1b90b9bf34d09f908bf33c9d16d385897b1fe282bacc
 
+  # The helper runs on the host and is looked up under our own system-wide
+  # install path; with a per-user install it cannot work, so Lapse records
+  # through the portal instead.
   - name: kms-server-proxy
     buildsystem: simple
     build-commands:
+      - sed -i "s/com\.dec05eba\.gpu_screen_recorder/com.canersin.Lapse/g" main.c
       - ./build.sh
       - install -Dm755 kms-server-proxy "$FLATPAK_DEST/bin/kms-server-proxy"
     sources:
@@ -96,6 +100,7 @@ modules:
   - name: gpu-screen-recorder
     buildsystem: simple
     build-commands:
+      - sed -i "s/com\.dec05eba\.gpu_screen_recorder/com.canersin.Lapse/g" kms/client/kms_client.c
       - meson setup build
       - meson configure --prefix=$FLATPAK_DEST --buildtype=release -Dcapabilities=false
         -Dsystemd=false -Dnvidia_suspend_fix=false -Dffmpeg_static=true -Dstrip=true build

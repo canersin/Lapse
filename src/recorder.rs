@@ -149,6 +149,23 @@ fn buffer_on_disk(config: &Config, fallback: bool, buffer_mb: f64, avail_mb: f64
     buffer_mb > 0.5 * avail_mb
 }
 
+/// Monitor capture in the Flatpak needs gpu-screen-recorder's host helper, which only
+/// runs from a system-wide install; otherwise Lapse records through the portal.
+fn kms_capture_available() -> bool {
+    if !crate::hardware::procs::in_flatpak() {
+        return true;
+    }
+    let Ok(info) = std::fs::read_to_string("/.flatpak-info") else {
+        return false;
+    };
+    for line in info.lines() {
+        if let Some(path) = line.strip_prefix("app-path=") {
+            return path.starts_with("/var/lib/flatpak/");
+        }
+    }
+    false
+}
+
 /// True unless the monitor list is readable and lacks `name`.
 fn monitor_connected(name: &str) -> bool {
     let monitors = crate::hardware::monitor::get_monitors();
@@ -814,6 +831,9 @@ impl Recorder {
     }
 
     fn resolve_target_monitor(&self) -> String {
+        if !kms_capture_available() {
+            return "portal".to_string();
+        }
         if let Some(m) = self.game_monitor() {
             return m;
         }
@@ -938,6 +958,11 @@ impl Recorder {
             .arg(target_monitor)
             .arg("-f")
             .arg(self.profile.as_ref().map(|p| p.fps).filter(|f| *f > 0).unwrap_or(self.config.fps).to_string());
+
+        if target_monitor == "portal" {
+            // Restore portal session so the desktop remembers permission and only asks once.
+            cmd.arg("-restore-portal-session").arg("yes");
+        }
 
         if let Some(res) = self.profile.as_ref().map(|p| p.resolution.as_str()).filter(|s| !s.is_empty()) {
             cmd.arg("-s").arg(res);
