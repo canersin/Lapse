@@ -294,10 +294,14 @@ pub fn clip_card_actions(ui: &mut egui::Ui, theme: &MonetTheme, clip: &ClipMetad
         ui.spacing_mut().interact_size.y = H;
         let bytes = (clip.size_mb * 1024.0 * 1024.0) as u64;
         let hint = t("Over 10 MB: the clip is shrunk with the Discord preset, then sent.");
-        match share_menu(ui, theme, ("card_share", &clip.path), bytes, H, hint) {
+        match share_menu(ui, theme, ("card_share", &clip.path), bytes, clip.duration_secs, H, hint) {
             Some(ShareChoice::Link) => crate::share::start_live_share(clip.path.clone()),
             Some(ShareChoice::Discord) => crate::discord::send_or_shrink(clip.path.clone(), webhook_url(), clip.duration_secs),
-            Some(ShareChoice::Streamable) => crate::streamable::upload(clip.path.clone()),
+            Some(ShareChoice::Streamable) => crate::streamable::upload_or_shrink(clip.path.clone(), clip.duration_secs),
+            Some(ShareChoice::StreamableBrowser) => {
+                let _ = open::that("https://streamable.com/");
+                let _ = open::that(clip.path.parent().unwrap_or(&clip.path));
+            }
             None => {}
         }
         if m3_small_button(ui, theme, t("Folder")).on_hover_text(t("Show in folder")).clicked() {

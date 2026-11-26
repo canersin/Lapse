@@ -2032,21 +2032,47 @@ fn render_streamable(ui: &mut egui::Ui, theme: &MonetTheme) {
                 );
             });
             ui.add_space(4.0);
+            ui.label(
+                RichText::new(t("Signed up with Google or Facebook? Streamable only accepts an email and password here. If your account has no password, set one on streamable.com (try \"Forgot password\" on the log-in page with the same email), or use \"Upload in browser\" from the Share menu."))
+                    .size(12.0)
+                    .color(theme.on_surface_variant),
+            );
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if crate::gui::components::button::m3_small_button(ui, theme, t("Save")).clicked() {
                     if let Err(e) = crate::streamable::save_credentials(&email, &password) {
+                        crate::streamable::clear_check_state();
                         status = Some((e.to_string(), true));
                     } else {
-                        status = Some((t("Credentials saved").to_string(), false));
+                        status = None;
+                        crate::streamable::start_check(&email, &password);
                     }
+                }
+                if crate::gui::components::button::m3_small_button(ui, theme, t("Check")).clicked() {
+                    status = None;
+                    crate::streamable::start_check(&email, &password);
                 }
                 if crate::gui::components::button::m3_small_button_colored(ui, theme, t("Remove"), theme.error).clicked() {
                     let _ = crate::streamable::remove_credentials();
                     email.clear();
                     password.clear();
+                    crate::streamable::clear_check_state();
                     status = Some((t("Credentials removed").to_string(), false));
                 }
-                if let Some((ref msg, is_err)) = status {
+                if let Some(check) = crate::streamable::check_state() {
+                    match check {
+                        crate::streamable::CheckState::Checking => {
+                            ui.label(RichText::new(t("Checking account...")).size(12.0).color(theme.primary));
+                            ui.ctx().request_repaint();
+                        }
+                        crate::streamable::CheckState::Ok => {
+                            ui.label(RichText::new(t("Signed in to Streamable")).size(12.0).color(theme.success));
+                        }
+                        crate::streamable::CheckState::Failed(e) => {
+                            ui.label(RichText::new(e).size(12.0).color(theme.error));
+                        }
+                    }
+                } else if let Some((ref msg, is_err)) = status {
                     let color = if is_err { theme.error } else { theme.success };
                     ui.label(RichText::new(msg).size(12.0).color(color));
                 }

@@ -67,6 +67,20 @@ pub fn post_json(url: &str, body: &serde_json::Value, timeout_secs: u64) -> Resu
     Ok(())
 }
 
+/// POSTs an empty body with HTTP Basic auth, returning the HTTP status code (Ok(code) for any
+/// HTTP response including 4xx/5xx, Err only for network errors).
+pub fn post_empty_auth(url: &str, auth: (&str, &str), timeout_secs: u64) -> Result<u16, Error> {
+    let creds = format!("{}:{}", auth.0, auth.1);
+    let req = agent(timeout_secs)
+        .post(url)
+        .set("Authorization", &format!("Basic {}", base64_encode(creds.as_bytes())));
+    match req.send_bytes(&[]) {
+        Ok(resp) => Ok(resp.status()),
+        Err(ureq::Error::Status(code, _)) => Ok(code),
+        Err(ureq::Error::Transport(t)) => Err(Error::Network(t.to_string())),
+    }
+}
+
 fn base64_encode(input: &[u8]) -> String {
     const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
@@ -208,6 +222,15 @@ mod tests {
         server.join().unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(matches!(result, Err(super::Error::Status(413))));
+    }
+
+    #[test]
+    fn post_empty_auth_returns_status() {
+        let (url, server) = serve_once(401);
+        let res = super::post_empty_auth(&url, ("user", "pass"), 10);
+        let sent = String::from_utf8(server.join().unwrap()).unwrap();
+        assert_eq!(res.unwrap(), 401);
+        assert!(sent.contains("Authorization: Basic"));
     }
 
     /// Needs the internet: `cargo test http_live -- --ignored`.

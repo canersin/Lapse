@@ -341,14 +341,20 @@ fn handle_export_events(ui: &mut egui::Ui, state: &mut PlayerState) {
             let action = state.export.post_action;
             if action != PostExportAction::None {
                 state.export.post_action = PostExportAction::None;
-                state.export.last_exported_path = Some(path.clone());
-                state.export.last_exported_bytes = bytes;
+                if !crate::export::is_share_temp(&path) {
+                    state.export.last_exported_path = Some(path.clone());
+                    state.export.last_exported_bytes = bytes;
+                } else {
+                    state.export.last_exported_path = None;
+                }
                 match action {
                     PostExportAction::Discord => {
+                        state.export.send_to_discord = false;
                         crate::discord::send_as(state.video_path.clone(), path, webhook_url());
                     }
                     PostExportAction::Streamable => {
-                        crate::streamable::upload(path);
+                        let duration = state.trim_end.saturating_sub(state.trim_start).as_secs_f64();
+                        crate::streamable::upload_or_shrink_as(state.video_path.clone(), path, duration);
                     }
                     PostExportAction::LiveShare => {
                         crate::share::start_live_share(path);
@@ -364,12 +370,21 @@ fn handle_export_events(ui: &mut egui::Ui, state: &mut PlayerState) {
                 }
             } else if state.export.send_to_discord {
                 state.export.send_to_discord = false;
+                if !crate::export::is_share_temp(&path) {
+                    state.export.last_exported_path = Some(path.clone());
+                    state.export.last_exported_bytes = bytes;
+                } else {
+                    state.export.last_exported_path = None;
+                }
                 crate::discord::send_as(state.video_path.clone(), path, webhook_url());
             }
         }
         Some(ExportState::Failed(e)) => {
             if state.export.post_action == PostExportAction::Discord || state.export.send_to_discord {
                 crate::discord::mark_failed(&state.video_path, &format!("shrinking failed: {}", e));
+            }
+            if state.export.post_action == PostExportAction::Streamable {
+                crate::streamable::mark_failed(&state.video_path, &format!("shrinking failed: {}", e));
             }
             state.export.post_action = PostExportAction::None;
             state.export.send_to_discord = false;
@@ -548,6 +563,11 @@ fn render_inline_status(
 
     if let Some(ss) = streamable_state {
         match ss {
+            crate::streamable::UploadState::Shrinking => {
+                ui.label(RichText::new(t("Shrinking for Streamable...")).size(12.0).color(theme.primary));
+                ui.ctx().request_repaint_after(Duration::from_millis(250));
+                shown_status = true;
+            }
             crate::streamable::UploadState::Uploading => {
                 ui.label(RichText::new(t("Uploading to Streamable...")).size(12.0).color(theme.primary));
                 ui.ctx().request_repaint_after(Duration::from_millis(250));
@@ -574,26 +594,28 @@ fn render_inline_status(
     // If export is done and no upload in progress taking precedence
     if !shown_status {
         if let Some(ExportState::Done { path, bytes }) = state.export.job.as_ref().map(|j| j.state()) {
-            ui.horizontal(|ui| {
-                m3_vector_icon(ui, IconKind::Check, 14.0, theme.success);
-                let name = path.file_name().unwrap_or_default().to_string_lossy();
-                ui.label(RichText::new(format!("{} ({})", name, format_file_size(bytes))).size(12.0).color(theme.on_surface));
-                if m3_small_button(ui, theme, t("Play")).clicked() {
-                    *open_result = Some(path.clone());
-                }
-                if m3_small_button(ui, theme, t("Show in folder")).clicked() {
-                    let _ = open::that(path.parent().unwrap_or(&path));
-                }
-                if m3_small_button(ui, theme, t("Copy path")).clicked() {
-                    let p_str = path.to_string_lossy().to_string();
-                    ui.output_mut(|o| o.copied_text = p_str.clone());
-                    crate::streamable::copy_to_clipboard(&p_str);
-                    crate::utils::send_notification("Lapse", &t("Path copied"), "emblem-shared");
-                }
-                let duration = (state.trim_end - state.trim_start).as_secs_f64();
-                discord_button(ui, theme, &path, bytes, duration);
-            });
-            shown_status = true;
+            if !crate::export::is_share_temp(&path) {
+                ui.horizontal(|ui| {
+                    m3_vector_icon(ui, IconKind::Check, 14.0, theme.success);
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    ui.label(RichText::new(format!("{} ({})", name, format_file_size(bytes))).size(12.0).color(theme.on_surface));
+                    if m3_small_button(ui, theme, t("Play")).clicked() {
+                        *open_result = Some(path.clone());
+                    }
+                    if m3_small_button(ui, theme, t("Show in folder")).clicked() {
+                        let _ = open::that(path.parent().unwrap_or(&path));
+                    }
+                    if m3_small_button(ui, theme, t("Copy path")).clicked() {
+                        let p_str = path.to_string_lossy().to_string();
+                        ui.output_mut(|o| o.copied_text = p_str.clone());
+                        crate::streamable::copy_to_clipboard(&p_str);
+                        crate::utils::send_notification("Lapse", &t("Path copied"), "emblem-shared");
+                    }
+                    let duration = (state.trim_end - state.trim_start).as_secs_f64();
+                    discord_button(ui, theme, &path, bytes, duration);
+                });
+                shown_status = true;
+            }
         } else if let Some(ExportState::Failed(msg)) = state.export.job.as_ref().map(|j| j.state()) {
             ui.label(RichText::new(format!("{}: {}", t("Export failed"), msg)).size(12.0).color(theme.error));
             shown_status = true;
@@ -849,20 +871,24 @@ fn discord_button(ui: &mut egui::Ui, theme: &MonetTheme, path: &std::path::Path,
 
 pub(super) use crate::gui::views::share_menu::webhook_url;
 
-fn start_export(state: &mut PlayerState) {
+fn start_export_req(state: &mut PlayerState, preset: ExportPreset, output: PathBuf) {
     state.pause();
     let overlays = state.export.overlays.clone();
     let req = ExportRequest {
         input: state.video_path.clone(),
         start: state.trim_start.as_secs_f64(),
         end: state.trim_end.as_secs_f64(),
-        preset: state.export.preset,
-        audio: if state.export.preset == ExportPreset::Gif { AudioMix::muted() } else { state.export.audio.clone() },
-        output: output_path(state),
-        crop: if matches!(state.export.preset, ExportPreset::Audio(_)) { None } else { state.export.crop },
+        preset,
+        audio: if preset == ExportPreset::Gif { AudioMix::muted() } else { state.export.audio.clone() },
+        output,
+        crop: if matches!(preset, ExportPreset::Audio(_)) { None } else { state.export.crop },
         overlays,
     };
     state.export.job = Some(export::start(req));
+}
+
+fn start_export(state: &mut PlayerState) {
+    start_export_req(state, state.export.preset, output_path(state));
 }
 
 /// Exports the selection with the Discord preset (under 10 MB) and sends it when done.
@@ -870,11 +896,11 @@ pub fn export_for_discord(state: &mut PlayerState) {
     if state.export.job.as_ref().is_some_and(|j| j.is_running()) {
         return;
     }
-    state.export.preset = ExportPreset::Discord;
     state.export.post_action = PostExportAction::Discord;
     state.export.send_to_discord = true;
     crate::discord::mark_shrinking(&state.video_path);
-    start_export(state);
+    let output = export::share_output(&state.video_path, ExportPreset::Discord);
+    start_export_req(state, ExportPreset::Discord, output);
 }
 
 /// Exports the selection and uploads to Streamable when done.
@@ -882,8 +908,25 @@ pub fn export_for_streamable(state: &mut PlayerState) {
     if state.export.job.as_ref().is_some_and(|j| j.is_running()) {
         return;
     }
+    let selection_secs = state.trim_end.saturating_sub(state.trim_start).as_secs_f64();
+    if selection_secs > crate::streamable::MAX_DURATION_SECS {
+        crate::streamable::mark_failed(
+            &state.video_path,
+            "Clip is longer than Streamable's 10-minute limit, trim it first",
+        );
+        return;
+    }
+    let clip_secs = state.duration.as_secs_f64().max(0.001);
+    let estimated_bytes = (state.file_size_bytes as f64 * (selection_secs / clip_secs)) as u64;
+    let preset = if estimated_bytes > crate::streamable::MAX_BYTES {
+        ExportPreset::Streamable
+    } else {
+        state.export.preset
+    };
     state.export.post_action = PostExportAction::Streamable;
-    start_export(state);
+    crate::streamable::mark_shrinking(&state.video_path);
+    let output = export::share_output(&state.video_path, preset);
+    start_export_req(state, preset, output);
 }
 
 /// Exports the selection and starts live share when done.

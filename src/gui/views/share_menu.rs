@@ -17,6 +17,7 @@ pub enum ShareChoice {
     Link,
     Discord,
     Streamable,
+    StreamableBrowser,
 }
 
 /// Webhook from the config file, read at most every few seconds.
@@ -35,7 +36,7 @@ pub fn webhook_url() -> String {
 
 /// The menu button; returns what was picked. `too_big_hint` explains what happens to
 /// clips over Discord's 10 MB limit.
-pub fn share_menu(ui: &mut egui::Ui, theme: &MonetTheme, id: impl std::hash::Hash, bytes: u64, height: f32, too_big_hint: &str) -> Option<ShareChoice> {
+pub fn share_menu(ui: &mut egui::Ui, theme: &MonetTheme, id: impl std::hash::Hash, bytes: u64, duration_secs: f64, height: f32, too_big_hint: &str) -> Option<ShareChoice> {
     let has_webhook = !webhook_url().is_empty();
     let mut choice = None;
     m3_dropdown_sized(ui, theme, id, t("Share"), 140.0, height, |ui| {
@@ -61,8 +62,10 @@ pub fn share_menu(ui: &mut egui::Ui, theme: &MonetTheme, id: impl std::hash::Has
         let has_streamable = crate::streamable::is_configured();
         let streamable_hint = if !has_streamable {
             t("Configure your Streamable account in Settings > Services first.")
+        } else if duration_secs > crate::streamable::MAX_DURATION_SECS {
+            t("Streamable takes clips up to 10 minutes. Trim it first.")
         } else if bytes > crate::streamable::MAX_BYTES {
-            t("File exceeds Streamable's 250 MB limit.")
+            t("Shrinks the clip to under 250 MB, then uploads it.")
         } else {
             t("Uploads the clip to your Streamable account.")
         };
@@ -76,6 +79,14 @@ pub fn share_menu(ui: &mut egui::Ui, theme: &MonetTheme, id: impl std::hash::Has
                     t("To upload clips to Streamable, enter your account email and password in Settings > Services > Streamable."),
                     SERVICES_TAB,
                 );
+            }
+        }
+        if !has_streamable {
+            if ui.selectable_label(false, t("Upload in browser"))
+                .on_hover_text(t("Opens streamable.com and the clip's folder, so you can drag the clip in."))
+                .clicked()
+            {
+                choice = Some(ShareChoice::StreamableBrowser);
             }
         }
         if ui.selectable_label(false, t("Public link (Cloudflare proxy)")).on_hover_text(t("Streams the clip from your PC through a Cloudflare proxy. Anyone with the link can watch it while Lapse is running.")).clicked() {
@@ -102,6 +113,10 @@ pub fn discord_status(ui: &mut egui::Ui, theme: &MonetTheme, path: &Path) {
 pub fn streamable_status(ui: &mut egui::Ui, theme: &MonetTheme, path: &Path) {
     let Some(state) = crate::streamable::state_for(path) else { return };
     match state {
+        crate::streamable::UploadState::Shrinking => {
+            ui.add(egui::Label::new(RichText::new(t("Shrinking for Streamable...")).size(11.5).color(theme.primary)).truncate(true));
+            ui.ctx().request_repaint_after(Duration::from_millis(300));
+        }
         crate::streamable::UploadState::Uploading => {
             ui.add(egui::Label::new(RichText::new(t("Uploading to Streamable...")).size(11.5).color(theme.primary)).truncate(true));
             ui.ctx().request_repaint_after(Duration::from_millis(300));

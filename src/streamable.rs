@@ -19,12 +19,39 @@ pub struct StreamableCredentials {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum UploadState {
+    Shrinking,
     Uploading,
     Done(String),
     Failed(String),
 }
 
 static UPLOADS: Mutex<Vec<(PathBuf, UploadState)>> = Mutex::new(Vec::new());
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CheckState {
+    Checking,
+    Ok,
+    Failed(String),
+}
+
+static CHECK_STATE: Mutex<Option<CheckState>> = Mutex::new(None);
+
+pub fn check_state() -> Option<CheckState> {
+    CHECK_STATE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn clear_check_state() {
+    *CHECK_STATE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// Shown as "shrinking" for `key` while another part of the app exports it.
+pub fn mark_shrinking(key: &Path) {
+    set(key, UploadState::Shrinking);
+}
+
+pub fn mark_failed(key: &Path, why: &str) {
+    set(key, UploadState::Failed(why.to_string()));
+}
 
 pub fn set(path: &Path, state: UploadState) {
     let mut uploads = UPLOADS.lock().unwrap_or_else(|e| e.into_inner());
@@ -161,53 +188,63 @@ pub fn copy_to_clipboard(text: &str) {
     });
 }
 
-pub fn upload_with_creds(path: PathBuf, upload_url: &str, creds: StreamableCredentials) {
-    let bytes = match std::fs::metadata(&path) {
+/// Uploads `file`, reporting the progress under `key` (the clip the user picked).
+pub fn upload_as(key: PathBuf, file: PathBuf, upload_url: &str, creds: StreamableCredentials) {
+    let bytes = match std::fs::metadata(&file) {
         Ok(m) => m.len(),
         Err(e) => {
-            set(&path, UploadState::Failed(e.to_string()));
+            crate::export::discard_share_temp(&file);
+            set(&key, UploadState::Failed(e.to_string()));
             return;
         }
     };
     if let Err(msg) = check_size_limit(bytes) {
-        set(&path, UploadState::Failed(msg.to_string()));
+        crate::export::discard_share_temp(&file);
+        set(&key, UploadState::Failed(msg.to_string()));
         return;
     }
     if creds.email.trim().is_empty() || creds.password.is_empty() {
-        set(&path, UploadState::Failed("Streamable credentials not configured".into()));
+        crate::export::discard_share_temp(&file);
+        set(&key, UploadState::Failed("Streamable credentials not configured".into()));
         return;
     }
-    set(&path, UploadState::Uploading);
-    let key = path.clone();
+    set(&key, UploadState::Uploading);
     let url = upload_url.to_string();
     std::thread::spawn(move || {
         let res = crate::http::post_file_auth(
             &url,
             Some((&creds.email, &creds.password)),
             "file",
-            &path,
+            &file,
             600,
         );
-        match res {
+        let state = match res {
             Ok(json) => match parse_upload_json(&json) {
                 Ok(share_url) => {
                     copy_to_clipboard(&share_url);
                     crate::utils::send_notification("Lapse", "Streamable link copied", "emblem-shared");
-                    set(&key, UploadState::Done(share_url));
+                    UploadState::Done(share_url)
                 }
                 Err(e) => {
-                    set(&key, UploadState::Failed(e));
+                    UploadState::Failed(e)
                 }
             },
             Err(e) => {
-                set(&key, UploadState::Failed(map_http_error(&e)));
+                UploadState::Failed(map_http_error(&e))
             }
-        }
+        };
+        crate::export::discard_share_temp(&file);
+        set(&key, state);
     });
+}
+
+pub fn upload_with_creds(path: PathBuf, upload_url: &str, creds: StreamableCredentials) {
+    upload_as(path.clone(), path, upload_url, creds);
 }
 
 pub fn upload_to(path: PathBuf, upload_url: &str) {
     let Some(creds) = load_credentials() else {
+        crate::export::discard_share_temp(&path);
         set(&path, UploadState::Failed("Streamable credentials not configured".into()));
         return;
     };
@@ -216,6 +253,96 @@ pub fn upload_to(path: PathBuf, upload_url: &str) {
 
 pub fn upload(path: PathBuf) {
     upload_to(path, UPLOAD_URL);
+}
+
+/// Uploads the clip; if over 250 MB, exports it with the Streamable preset first.
+pub fn upload_or_shrink(path: PathBuf, duration_secs: f64) {
+    upload_or_shrink_as(path.clone(), path, duration_secs);
+}
+
+/// Uploads `file`, reporting the progress under `key`; if over 250 MB, exports it with the Streamable preset first.
+pub fn upload_or_shrink_as(key: PathBuf, file: PathBuf, duration_secs: f64) {
+    let Some(creds) = load_credentials().filter(|c| !c.email.trim().is_empty() && !c.password.is_empty()) else {
+        crate::export::discard_share_temp(&file);
+        set(&key, UploadState::Failed("Streamable credentials not configured".into()));
+        return;
+    };
+    if duration_secs > MAX_DURATION_SECS {
+        crate::export::discard_share_temp(&file);
+        set(&key, UploadState::Failed("Clip is longer than Streamable's 10-minute limit, trim it first".into()));
+        return;
+    }
+    let bytes = match std::fs::metadata(&file) {
+        Ok(m) => m.len(),
+        Err(e) => {
+            crate::export::discard_share_temp(&file);
+            set(&key, UploadState::Failed(e.to_string()));
+            return;
+        }
+    };
+    if bytes <= MAX_BYTES {
+        upload_as(key, file, UPLOAD_URL, creds);
+        return;
+    }
+    set(&key, UploadState::Shrinking);
+    let output = crate::export::share_output(&file, crate::export::ExportPreset::Streamable);
+    let job = crate::export::start(crate::export::ExportRequest {
+        input: file.clone(),
+        start: 0.0,
+        end: duration_secs.max(0.1),
+        preset: crate::export::ExportPreset::Streamable,
+        audio: crate::export::AudioMix::default(),
+        output,
+        crop: None,
+        overlays: Vec::new(),
+    });
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        match job.state() {
+            crate::export::ExportState::Running { .. } => continue,
+            crate::export::ExportState::Done { path: small, .. } => {
+                crate::export::discard_share_temp(&file);
+                return upload_as(key, small, UPLOAD_URL, creds);
+            }
+            crate::export::ExportState::Failed(e) => {
+                crate::export::discard_share_temp(&file);
+                return set(&key, UploadState::Failed(format!("shrinking failed: {}", e)));
+            }
+            crate::export::ExportState::Cancelled => {
+                crate::export::discard_share_temp(&file);
+                return set(&key, UploadState::Failed("cancelled".into()));
+            }
+        }
+    });
+}
+
+/// Logs in with an empty upload: Streamable rejects bad credentials with 401 before it looks
+/// for the file, so any other answer means the login works.
+pub fn check_credentials_at(url: &str, email: &str, password: &str) -> Result<(), String> {
+    match crate::http::post_empty_auth(url, (email, password), 15) {
+        Ok(401 | 403) => Err(map_http_error(&crate::http::Error::Status(401))),
+        Ok(429) => Err(map_http_error(&crate::http::Error::Status(429))),
+        Ok(_) => Ok(()),
+        Err(e) => Err(map_http_error(&e)),
+    }
+}
+
+pub fn check_credentials(email: &str, password: &str) -> Result<(), String> {
+    check_credentials_at(UPLOAD_URL, email, password)
+}
+
+pub fn start_check(email: &str, password: &str) {
+    *CHECK_STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(CheckState::Checking);
+    let email = email.to_string();
+    let password = password.to_string();
+    std::thread::spawn(move || {
+        let res = check_credentials(&email, &password);
+        let state = match res {
+            Ok(()) => CheckState::Ok,
+            Err(e) => CheckState::Failed(e),
+        };
+        *CHECK_STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
+    });
 }
 
 #[cfg(test)]
@@ -356,5 +483,119 @@ mod tests {
         let auth_header = headers.iter().find(|h| h.to_ascii_lowercase().starts_with("authorization:"));
         assert!(auth_header.is_some());
         let _ = std::fs::remove_file(&test_file);
+    }
+
+    /// Answers one request with `status`; the thread returns the request's header lines.
+    fn mock_status(status: &'static str) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/upload", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut headers = Vec::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" || line.is_empty() {
+                    break;
+                }
+                headers.push(line);
+            }
+            write!(stream, "HTTP/1.1 {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", status).unwrap();
+            headers
+        });
+        (url, server)
+    }
+
+    #[test]
+    fn check_credentials_reads_the_status() {
+        for (status, want) in [
+            ("401 Unauthorized", Err("Wrong Streamable email or password".to_string())),
+            ("400 Bad Request", Ok(())),
+        ] {
+            let (url, server) = mock_status(status);
+            assert_eq!(check_credentials_at(&url, "user@lapse.com", "pass"), want);
+            let headers = server.join().unwrap();
+            assert!(headers.iter().any(|h| h.to_ascii_lowercase().starts_with("authorization: basic")));
+        }
+    }
+
+    #[test]
+    fn test_upload_as_share_temp_deletion() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}/upload", addr);
+
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut length = 0usize;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = v.trim().parse().unwrap();
+                    }
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                let mut body = vec![0u8; length];
+                reader.read_exact(&mut body).unwrap();
+                let mut stream = stream;
+                let response = "{\"shortcode\": \"mock_temp\"}";
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    response.len(),
+                    response
+                ).unwrap();
+            }
+        });
+
+        let share_dir = std::env::temp_dir().join("lapse-share");
+        let _ = std::fs::create_dir_all(&share_dir);
+        let temp_file = share_dir.join(format!("lapse-mock-temp-{}.mp4", std::process::id()));
+        std::fs::write(&temp_file, b"temp content in share folder").unwrap();
+
+        let regular_file = std::env::temp_dir().join(format!("lapse-mock-reg-{}.mp4", std::process::id()));
+        std::fs::write(&regular_file, b"regular clip content").unwrap();
+
+        let creds = StreamableCredentials {
+            email: "user@lapse.com".into(),
+            password: "mypassword".into(),
+        };
+
+        // 1. Upload temp file inside share folder -> should be deleted
+        let key_temp = PathBuf::from("temp-key");
+        upload_as(key_temp.clone(), temp_file.clone(), &url, creds.clone());
+
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if let Some(UploadState::Done(_)) = state_for(&key_temp) {
+                break;
+            }
+        }
+        assert!(!temp_file.exists(), "temp file in share folder must be deleted after upload");
+
+        // 2. Upload regular file outside share folder -> should be kept
+        let key_reg = PathBuf::from("reg-key");
+        upload_as(key_reg.clone(), regular_file.clone(), &url, creds);
+
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if let Some(UploadState::Done(_)) = state_for(&key_reg) {
+                break;
+            }
+        }
+        assert!(regular_file.exists(), "regular file outside share folder must be kept after upload");
+
+        let _ = std::fs::remove_file(&regular_file);
+        server.join().unwrap();
     }
 }

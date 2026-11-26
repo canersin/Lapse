@@ -10,6 +10,8 @@ use crate::gui::views::trimmer::overlays::{Overlay, OverlayKind};
 /// Discord's free upload limit is 10 MiB; aim a little under it.
 pub const DISCORD_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const DISCORD_TARGET_BYTES: f64 = 9.4 * 1024.0 * 1024.0;
+/// Streamable's free upload limit is 250 MiB; aim a little under it.
+const STREAMABLE_TARGET_BYTES: f64 = 240.0 * 1024.0 * 1024.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AudioFormat {
@@ -52,6 +54,8 @@ pub enum ExportPreset {
     Precise,
     /// Re-encode to fit Discord's 10 MB limit.
     Discord,
+    /// Re-encode to fit Streamable's 250 MB limit.
+    Streamable,
     /// 9:16 for TikTok / Shorts / Reels: a vertical slice of the picture.
     Vertical,
     Gif,
@@ -66,6 +70,7 @@ impl ExportPreset {
             Self::Fast => "Fast",
             Self::Precise => "Precise",
             Self::Discord => "Discord",
+            Self::Streamable => "Streamable",
             Self::Vertical => "Vertical",
             Self::Gif => "GIF",
             Self::Audio(_) => "Audio",
@@ -77,6 +82,7 @@ impl ExportPreset {
             Self::Fast => "Instant, original quality. Cut points may shift up to ~2 s to the nearest keyframe.",
             Self::Precise => "Exact cut points, near-original quality. Takes a little longer.",
             Self::Discord => "Shrinks the clip to under 10 MB so it uploads to Discord without Nitro.",
+            Self::Streamable => "Shrinks the clip to under 250 MB for Streamable.",
             Self::Vertical => "9:16 video (1080x1920) for Shorts, TikTok and Reels. Move the frame to pick which part of the picture is kept.",
             Self::Gif => "Animated GIF (480p, 15 fps, no sound). Best for short moments.",
             Self::Audio(_) => "Audio only. Pick the format below.",
@@ -551,6 +557,7 @@ pub fn default_output(input: &Path, preset: ExportPreset) -> PathBuf {
     let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("clip");
     let suffix = match preset {
         ExportPreset::Discord => "discord",
+        ExportPreset::Streamable => "streamable",
         ExportPreset::Vertical => "vertical",
         ExportPreset::Gif => "gif",
         ExportPreset::Audio(_) => "audio",
@@ -561,6 +568,54 @@ pub fn default_output(input: &Path, preset: ExportPreset) -> PathBuf {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(format!("{}_{}_{}.{}", stem, suffix, time, preset.extension()))
+}
+
+fn cleanup_old_share_files(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let day = std::time::Duration::from_secs(24 * 3600);
+    for entry in entries.flatten() {
+        if let Ok(meta) = entry.metadata() {
+            if meta.is_file() {
+                if let Ok(mod_time) = meta.modified() {
+                    if let Ok(age) = mod_time.elapsed() {
+                        if age > day {
+                            let _ = std::fs::remove_file(entry.path());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn share_dir() -> PathBuf {
+    std::env::temp_dir().join("lapse-share")
+}
+
+/// Destination in a temp folder for clips exported only to be shared, so they
+/// do not clutter the user's clip library.
+pub fn share_output(input: &Path, preset: ExportPreset) -> PathBuf {
+    let dir = share_dir();
+    if std::fs::create_dir_all(&dir).is_ok() {
+        cleanup_old_share_files(&dir);
+    }
+    let file_name = default_output(input, preset)
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| "clip.mp4".into());
+    dir.join(file_name)
+}
+
+/// Whether `path` was made by `share_output`.
+pub fn is_share_temp(path: &Path) -> bool {
+    path.parent() == Some(share_dir().as_path())
+}
+
+/// Deletes `path` once it has been shared, if it is a `share_output` file; never a clip.
+pub fn discard_share_temp(path: &Path) {
+    if is_share_temp(path) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -602,11 +657,11 @@ pub fn audio_stream_count(input: &Path) -> usize {
         .unwrap_or(1)
 }
 
-/// Discord: bitrate budget for the whole clip, then resolution/fps that suit it.
-pub fn discord_plan(duration: f64, has_audio: bool, scale: f64) -> (u32, u32, u32) {
-    let audio_kbps = if has_audio { 96.0 } else { 0.0 };
-    let total_kbps = DISCORD_TARGET_BYTES * 8.0 / duration.max(0.5) / 1000.0 * scale;
-    let video_kbps = (total_kbps - audio_kbps).max(120.0);
+/// Bitrate budget for a whole clip to fit a size target, then resolution/fps that suit it.
+pub fn size_budget_plan(target_bytes: f64, duration: f64, has_audio: bool, audio_kbps: f64, scale: f64) -> (u32, u32, u32) {
+    let a_kbps = if has_audio { audio_kbps } else { 0.0 };
+    let total_kbps = target_bytes * 8.0 / duration.max(0.5) / 1000.0 * scale;
+    let video_kbps = (total_kbps - a_kbps).max(120.0);
     let (height, fps) = if video_kbps >= 4500.0 {
         (1080, 60)
     } else if video_kbps >= 2500.0 {
@@ -617,6 +672,41 @@ pub fn discord_plan(duration: f64, has_audio: bool, scale: f64) -> (u32, u32, u3
         (480, 30)
     };
     (video_kbps as u32, height, fps)
+}
+
+/// Discord: bitrate budget for the whole clip, then resolution/fps that suit it.
+pub fn discord_plan(duration: f64, has_audio: bool, scale: f64) -> (u32, u32, u32) {
+    size_budget_plan(DISCORD_TARGET_BYTES, duration, has_audio, 96.0, scale)
+}
+
+/// Streamable: bitrate budget for the whole clip to fit 250 MB, with 128k AAC audio.
+pub fn streamable_plan(duration: f64, has_audio: bool, scale: f64) -> (u32, u32, u32) {
+    size_budget_plan(STREAMABLE_TARGET_BYTES, duration, has_audio, 128.0, scale)
+}
+
+/// Upload limit of a preset that shrinks clips for a site (Discord, Streamable).
+fn size_limit(preset: ExportPreset) -> Option<u64> {
+    match preset {
+        ExportPreset::Discord => Some(DISCORD_LIMIT_BYTES),
+        ExportPreset::Streamable => Some(crate::streamable::MAX_BYTES),
+        _ => None,
+    }
+}
+
+fn size_audio_bitrate(preset: ExportPreset) -> Option<&'static str> {
+    match preset {
+        ExportPreset::Discord => Some("96k"),
+        ExportPreset::Streamable => Some("128k"),
+        _ => None,
+    }
+}
+
+fn size_plan(preset: ExportPreset, duration: f64, has_audio: bool, scale: f64) -> (u32, u32, u32) {
+    if preset == ExportPreset::Streamable {
+        streamable_plan(duration, has_audio, scale)
+    } else {
+        discord_plan(duration, has_audio, scale)
+    }
 }
 
 /// Extracts output resolution and fps from filter strings, falling back to 1080p60.
@@ -1180,7 +1270,7 @@ pub fn build_args_with_overlays(
         (vw, vh)
     };
 
-    let reencodes = matches!(req.preset, ExportPreset::Precise | ExportPreset::Discord | ExportPreset::Vertical)
+    let reencodes = matches!(req.preset, ExportPreset::Precise | ExportPreset::Discord | ExportPreset::Streamable | ExportPreset::Vertical)
         || (req.preset == ExportPreset::Fast && (effective_crop.is_some() || !overlays.is_empty()));
     let vaapi = !cfg!(windows) && encoder == H264Encoder::Vaapi && reencodes;
     if vaapi {
@@ -1260,7 +1350,7 @@ pub fn build_args_with_overlays(
         }
     }
 
-    let single_track = matches!(req.preset, ExportPreset::Discord | ExportPreset::Vertical | ExportPreset::Audio(_));
+    let single_track = matches!(req.preset, ExportPreset::Discord | ExportPreset::Streamable | ExportPreset::Vertical | ExportPreset::Audio(_));
     let has_sound_overlays = req.preset != ExportPreset::Gif
         && overlays.iter().any(|o| match &o.kind {
             OverlayKind::Audio { .. } => true,
@@ -1342,8 +1432,8 @@ pub fn build_args_with_overlays(
                 enc_filters.push("scale=1080:1920:flags=lanczos".into());
                 video_encode_args_for(encoder, &mut args, &mut enc_filters, Some(20), None);
             }
-            ExportPreset::Discord => {
-                let (video_kbps, height, fps) = discord_plan(duration, audio != AudioOut::None, scale);
+            ExportPreset::Discord | ExportPreset::Streamable => {
+                let (video_kbps, height, fps) = size_plan(req.preset, duration, audio != AudioOut::None, scale);
                 graph_parts.push(format!("{}scale=-2:'min({},ih)',fps={}[vfinal]", cur_v, height, fps));
                 cur_v = "[vfinal]".to_string();
                 enc_filters.push(format!("scale=-2:'min({},ih)'", height));
@@ -1367,11 +1457,7 @@ pub fn build_args_with_overlays(
         args.extend(["-filter_complex".into(), full_complex]);
         args.extend(["-map".into(), cur_v]);
 
-        let a_codec: &[&str] = if req.preset == ExportPreset::Discord {
-            &["-c:a", "aac", "-b:a", "96k"]
-        } else {
-            &["-c:a", "aac", "-b:a", "192k"]
-        };
+        let a_codec: &[&str] = &["-c:a", "aac", "-b:a", size_audio_bitrate(req.preset).unwrap_or("192k")];
 
         match audio {
             AudioOut::None => args.push("-an".into()),
@@ -1426,13 +1512,13 @@ pub fn build_args_with_overlays(
                 push_audio(&mut args, &audio, &["-c:a", "aac", "-b:a", "192k"]);
                 video_encode_args_for(encoder, &mut args, &mut filters, Some(18), None);
             }
-            ExportPreset::Discord => {
-                let (video_kbps, height, fps) = discord_plan(duration, audio != AudioOut::None, scale);
+            ExportPreset::Discord | ExportPreset::Streamable => {
+                let (video_kbps, height, fps) = size_plan(req.preset, duration, audio != AudioOut::None, scale);
                 filters.push(format!("scale=-2:'min({},ih)'", height));
                 filters.push(format!("fps={}", fps));
                 video_encode_args_for(encoder, &mut args, &mut filters, None, Some(video_kbps));
                 args.extend(["-map", "0:v:0"].map(String::from));
-                push_audio(&mut args, &audio, &["-c:a", "aac", "-b:a", "96k"]);
+                push_audio(&mut args, &audio, &["-c:a", "aac", "-b:a", size_audio_bitrate(req.preset).unwrap_or("192k")]);
             }
             ExportPreset::Vertical => {
                 filters.push("scale=1080:1920:flags=lanczos".into());
@@ -1475,13 +1561,13 @@ fn temp_output(output: &Path) -> PathBuf {
 pub fn start(req: ExportRequest) -> ExportJob {
     let duration = (req.end - req.start).max(0.05);
     let output = req.output.clone();
-    let discord = req.preset == ExportPreset::Discord;
+    let limit = size_limit(req.preset);
     run_job(duration, output, move |tmp| {
         let tracks = audio_stream_count(&req.input);
-        // Discord exports retry with a smaller budget if the first attempt is too big.
-        let scales: &[f64] = if discord { &[1.0, 0.85, 0.7] } else { &[1.0] };
+        // Discord and Streamable exports retry with a smaller budget if the first attempt is too big.
+        let scales: &[f64] = if limit.is_some() { &[1.0, 0.85, 0.7] } else { &[1.0] };
         scales.iter().map(|scale| build_args(&req, tracks, *scale, tmp)).collect()
-    }, move |bytes| !discord || bytes <= DISCORD_LIMIT_BYTES)
+    }, move |bytes| limit.map_or(true, |l| bytes <= l))
 }
 
 /// Runs ffmpeg in the background with progress, cancel and a hidden temp file.
@@ -1751,6 +1837,14 @@ mod tests {
     }
 
     #[test]
+    fn streamable_budget_fits_limit() {
+        let (kbps, h, _) = streamable_plan(540.0, true, 1.0);
+        let total_bytes = (kbps as f64 + 128.0) * 1000.0 / 8.0 * 540.0;
+        assert!(total_bytes < crate::streamable::MAX_BYTES as f64, "{}", total_bytes);
+        assert_eq!(h, 1080);
+    }
+
+    #[test]
     fn fast_export_copies_all_audio_tracks() {
         let args = build_args(&req(ExportPreset::Fast), 2, 1.0, Path::new("/v/out.mp4"));
         let joined = args.join(" ");
@@ -1973,8 +2067,8 @@ mod tests {
         let ok = cmd.arg(&input).status().unwrap().success();
         assert!(ok);
 
-        for preset in ExportPreset::ALL {
-            let out = dir.join(format!("out.{}", preset.extension()));
+        for preset in ExportPreset::ALL.into_iter().chain([ExportPreset::Streamable]) {
+            let out = dir.join(format!("out-{}.{}", preset.label(), preset.extension()));
             let job = start(ExportRequest { input: input.clone(), start: 3.0, end: 9.0, preset, audio: AudioMix::default(), output: out.clone(), crop: None, overlays: Vec::new() });
             let state = loop {
                 let s = job.state();
@@ -1986,8 +2080,8 @@ mod tests {
             assert!(matches!(state, ExportState::Done { .. }), "{:?}: {:?}", preset, state);
             let d = crate::clip_index::probe_duration(&out);
             assert!(d > 5.0 && d < 9.5, "{:?} duration {}", preset, d);
-            if preset == ExportPreset::Discord {
-                assert!(std::fs::metadata(&out).unwrap().len() <= DISCORD_LIMIT_BYTES);
+            if let Some(limit) = size_limit(preset) {
+                assert!(std::fs::metadata(&out).unwrap().len() <= limit);
             }
             eprintln!("{:?}: {:.2}s {:?}", preset, d, state);
         }
@@ -2437,5 +2531,16 @@ mod tests {
         // Audio map must be present, NOT -an
         assert!(joined.contains("-map [aout]"), "missing -map [aout]: {}", joined);
         assert!(!joined.contains("-an"), "should not have -an when sound overlays present: {}", joined);
+    }
+
+    #[test]
+    fn test_share_output_and_is_share_temp() {
+        let input = Path::new("/clips/game_replay.mp4");
+        let out = share_output(input, ExportPreset::Fast);
+        let share_dir = std::env::temp_dir().join("lapse-share");
+        assert!(out.starts_with(&share_dir));
+        assert!(is_share_temp(&out));
+        assert!(!is_share_temp(input));
+        assert!(!is_share_temp(Path::new("/home/user/Videos/Lapse/clip.mp4")));
     }
 }

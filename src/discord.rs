@@ -50,6 +50,7 @@ pub fn mark_failed(key: &Path, why: &str) {
 /// Uploads `file`, reporting the progress under `key` (the clip the user picked).
 pub fn send_as(key: PathBuf, file: PathBuf, webhook: String) {
     if !is_webhook(&webhook) {
+        crate::export::discard_share_temp(&file);
         set(&key, SendState::Failed("the webhook link doesn't look like a Discord webhook".into()));
         return;
     }
@@ -62,6 +63,7 @@ pub fn send_as(key: PathBuf, file: PathBuf, webhook: String) {
             Err(crate::http::Error::Status(code)) => SendState::Failed(format!("Discord answered {}", code)),
             Err(e) => SendState::Failed(e.to_string()),
         };
+        crate::export::discard_share_temp(&path);
         set(&key, state);
     });
 }
@@ -75,7 +77,7 @@ pub fn send_or_shrink(path: PathBuf, webhook: String, duration_secs: f64) {
     }
     use crate::export::{AudioMix, ExportPreset, ExportRequest, ExportState};
     set(&path, SendState::Shrinking);
-    let output = crate::export::default_output(&path, ExportPreset::Discord);
+    let output = crate::export::share_output(&path, ExportPreset::Discord);
     let job = crate::export::start(ExportRequest {
         input: path.clone(),
         start: 0.0,
@@ -90,9 +92,18 @@ pub fn send_or_shrink(path: PathBuf, webhook: String, duration_secs: f64) {
         std::thread::sleep(std::time::Duration::from_millis(300));
         match job.state() {
             ExportState::Running { .. } => continue,
-            ExportState::Done { path: small, .. } => return send_as(path, small, webhook),
-            ExportState::Failed(e) => return set(&path, SendState::Failed(format!("shrinking failed: {}", e))),
-            ExportState::Cancelled => return set(&path, SendState::Failed("cancelled".into())),
+            ExportState::Done { path: small, .. } => {
+                crate::export::discard_share_temp(&path);
+                return send_as(path, small, webhook);
+            }
+            ExportState::Failed(e) => {
+                crate::export::discard_share_temp(&path);
+                return set(&path, SendState::Failed(format!("shrinking failed: {}", e)));
+            }
+            ExportState::Cancelled => {
+                crate::export::discard_share_temp(&path);
+                return set(&path, SendState::Failed("cancelled".into()));
+            }
         }
     });
 }
