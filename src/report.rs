@@ -1,6 +1,6 @@
 //! System diagnostics, report generation, and GitHub issue URLs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Basic system information pre-filled into GitHub issue forms.
@@ -265,6 +265,21 @@ pub fn write_report() -> std::io::Result<PathBuf> {
     Ok(report_path)
 }
 
+/// Generates a diagnostic report, opens the GitHub bug report form in a browser,
+/// and reveals the folder containing the report.
+pub fn open_bug_report() -> std::io::Result<PathBuf> {
+    let report_path = write_report()?;
+    let info = system_info();
+    let url = issue_url(IssueKind::Bug, &info);
+    let _ = open::that(&url);
+    if let Some(parent) = report_path.parent() {
+        let _ = open::that(parent);
+    } else {
+        let _ = open::that(&report_path);
+    }
+    Ok(report_path)
+}
+
 /// GitHub issues page reports go to; a build can point it elsewhere with LAPSE_ISSUES_URL (see build.rs).
 const ISSUES_URL: &str = match option_env!("LAPSE_ISSUES_URL") {
     Some(url) => url,
@@ -358,6 +373,22 @@ pub fn redact_custom(text: &str, home: Option<&str>, username: Option<&str>) -> 
     out
 }
 
+/// The path with the home folder shown as `~`, for paths shown in the window, so
+/// screenshots do not show the user name.
+pub fn show_path(path: &Path) -> String {
+    match directories::BaseDirs::new() {
+        Some(dirs) => show_path_in(path, dirs.home_dir()),
+        None => path.display().to_string(),
+    }
+}
+
+fn show_path_in(path: &Path, home: &Path) -> String {
+    match path.strip_prefix(home) {
+        Ok(rel) if home.parent().is_some() => Path::new("~").join(rel).display().to_string(),
+        _ => path.display().to_string(),
+    }
+}
+
 fn redact_webhooks(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut remaining = text;
@@ -433,6 +464,14 @@ mod tests {
         let raw = "User gamer at /home/gamer sent https://discord.com/api/webhooks/111/aaa done";
         let redacted = redact_custom(raw, Some("/home/gamer"), Some("gamer"));
         assert_eq!(redacted, "User <user> at ~ sent <webhook> done");
+    }
+
+    #[test]
+    fn test_show_path() {
+        let home = Path::new("/home/gamer");
+        assert_eq!(show_path_in(Path::new("/home/gamer/.local/state/lapse/daemon.log"), home), "~/.local/state/lapse/daemon.log");
+        assert_eq!(show_path_in(Path::new("/var/log/x.log"), home), "/var/log/x.log");
+        assert_eq!(show_path_in(Path::new("/etc/x"), Path::new("/")), "/etc/x");
     }
 
     #[test]

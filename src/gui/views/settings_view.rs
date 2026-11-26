@@ -11,7 +11,9 @@ use crate::hardware::gpu::GpuDevice;
 use crate::hardware::monitor::MonitorDevice;
 use crate::ipc;
 
-use crate::gui::components::button::{m3_filled_button_sized, m3_outlined_button, m3_tonal_button_sized};
+use crate::gui::components::button::{
+    m3_filled_button_sized, m3_outlined_button, m3_small_button_colored, m3_tonal_button_sized,
+};
 use crate::gui::components::card::m3_section_card;
 use crate::gui::components::chip::{m3_badge, m3_keycap};
 use crate::gui::components::header::m3_page_header;
@@ -2414,7 +2416,7 @@ fn render_advanced_tab(
                 ui,
                 theme,
                 t("Daemon Log"),
-                &crate::daemon::log_path().display().to_string(),
+                &crate::report::show_path(&crate::daemon::log_path()),
                 |ui| {
                     if crate::gui::components::button::m3_outlined_button(ui, theme, t("Open Log")).clicked() {
                         let _ = open::that(crate::daemon::log_path());
@@ -2426,13 +2428,50 @@ fn render_advanced_tab(
                 ui,
                 theme,
                 t("Recorder Log"),
-                &crate::recorder::log_path().display().to_string(),
+                &crate::report::show_path(&crate::recorder::log_path()),
                 |ui| {
                     if crate::gui::components::button::m3_outlined_button(ui, theme, t("Open Log")).clicked() {
                         let _ = open::that(crate::recorder::log_path());
                     }
                 },
             );
+            ui.separator();
+            let gui_log_path = crate::daemon::log_path().with_file_name("gui.log");
+            m3_setting_row(
+                ui,
+                theme,
+                t("Window Log"),
+                &crate::report::show_path(&gui_log_path),
+                |ui| {
+                    if crate::gui::components::button::m3_outlined_button(ui, theme, t("Open Log")).clicked() {
+                        let _ = open::that(&gui_log_path);
+                    }
+                },
+            );
+            ui.separator();
+            let error_id = ui.id().with("report_error");
+            m3_setting_row(
+                ui,
+                theme,
+                t("Error report"),
+                t("Writes lapse-report.txt with your system details and recent logs (user name removed) and opens a GitHub issue to attach it to."),
+                |ui| {
+                    if m3_small_button_colored(ui, theme, t("Report a bug"), theme.primary).clicked() {
+                        match crate::report::open_bug_report() {
+                            Ok(_) => {
+                                ui.data_mut(|d| d.remove::<String>(error_id));
+                            }
+                            Err(e) => {
+                                ui.data_mut(|d| d.insert_temp(error_id, e.to_string()));
+                            }
+                        }
+                    }
+                },
+            );
+            if let Some(err) = ui.data(|d| d.get_temp::<String>(error_id)) {
+                ui.label(RichText::new(&err).size(12.0).color(theme.error));
+                ui.add_space(4.0);
+            }
         },
     );
 }

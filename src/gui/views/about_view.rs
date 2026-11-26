@@ -117,17 +117,9 @@ pub fn render_about(
 
                     ui.horizontal(|ui| {
                         if m3_small_button_colored(ui, theme, t("Report a bug"), theme.primary).clicked() {
-                            match crate::report::write_report() {
-                                Ok(report_path) => {
+                            match crate::report::open_bug_report() {
+                                Ok(_) => {
                                     ui.data_mut(|d| d.remove::<String>(error_id));
-                                    let info = crate::report::system_info();
-                                    let url = crate::report::issue_url(crate::report::IssueKind::Bug, &info);
-                                    let _ = open::that(&url);
-                                    if let Some(parent) = report_path.parent() {
-                                        let _ = open::that(parent);
-                                    } else {
-                                        let _ = open::that(&report_path);
-                                    }
                                 }
                                 Err(e) => {
                                     ui.data_mut(|d| d.insert_temp(error_id, e.to_string()));
