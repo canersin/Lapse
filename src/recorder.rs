@@ -527,16 +527,18 @@ fn shift_audio(path: &Path, ms: i32) {
 /// Keeps only the last `secs` seconds (stream copy, so it starts at the keyframe before).
 pub(crate) fn trim_to_last(path: &Path, secs: u32) {
     let duration = crate::clip_index::probe_duration(path);
-    if duration <= secs as f64 + 2.0 {
+    if duration <= secs as f64 + 0.05 {
         return;
     }
     let tmp = hidden_temp(path, "trim");
+    // Stream copy starts at the keyframe before the cut; the mp4 edit list ffmpeg writes hides
+    // the frames before it, so the clip is exactly `secs` long. make_zero would undo that.
     let ok = crate::utils::ffmpeg_cmd()
         .args(["-y", "-loglevel", "error", "-sseof"])
         .arg(format!("-{}", secs))
         .arg("-i")
         .arg(path)
-        .args(["-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero"])
+        .args(["-map", "0", "-c", "copy"])
         .arg(&tmp)
         .status()
         .map(|s| s.success())
