@@ -28,7 +28,7 @@ ICONSDIR    := $(DATADIR)/icons/hicolor/512x512/apps
 SOUNDSDIR   := $(DATADIR)/sounds/$(NAME)
 LICENSEDIR  := $(DATADIR)/licenses/$(NAME)
 
-.PHONY: all build install uninstall packages appimage deb rpm tar aur gentoo flatpak clean
+.PHONY: all build install uninstall clean
 
 all: build
 
@@ -70,13 +70,6 @@ uninstall:
 	rm -f "$(DATADIR)/icons/hicolor/scalable/apps/lapse.svg" "$(DATADIR)/icons/hicolor/symbolic/apps/lapse-symbolic.svg"
 	rm -rf "$(SOUNDSDIR)" "$(LICENSEDIR)"
 	@echo "Uninstalled Lapse from $(PREFIX)"
-
-# Release packages into dist/, built in containers (see packaging/build-release.sh).
-packages:
-	./packaging/build-release.sh
-
-tar deb rpm appimage aur gentoo flatpak:
-	./packaging/build-release.sh $@
 
 clean:
 	$(CARGO) clean

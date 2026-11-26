@@ -2,8 +2,6 @@
 """Prints the Gentoo ebuild for a version, with the crate list from Cargo.lock.
 
     python3 packaging/gentoo/ebuild.py 2.3.0 > lapse-2.3.0.ebuild
-
-packaging/build-release.sh gentoo writes it to dist/gentoo/media-video/lapse/.
 """
 
 import pathlib

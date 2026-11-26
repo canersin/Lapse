@@ -1,15 +1,17 @@
 # Lapse
 
-A replay recorder and clip editor for Linux games, written in Rust.
+A replay recorder and clip editor for games on Linux and Windows, written in Rust.
 
 Lapse keeps the last minutes of your screen in a buffer. Press a key, and that
 buffer is saved as a clip, sorted into a folder for the game you were playing.
 You can then trim it, export it for Discord or as a vertical video, or share
 a link to it, all from the same window.
 
-Recording is done by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/),
+On Linux, recording is done by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/),
 which encodes on the graphics card, so the cost in frame rate is very small.
-Lapse works on Wayland and X11.
+Lapse works on Wayland and X11. On Windows, Lapse captures the screen with
+Windows Graphics Capture and encodes on the graphics card itself; see
+[Windows](#windows).
 
 ![The Lapse home screen](docs/screenshots/01-home.png)
 
@@ -22,12 +24,14 @@ Lapse works on Wayland and X11.
 - [Settings](#settings)
 - [Clip editor](#clip-editor)
 - [Sharing](#sharing)
+- [Voice trigger](#voice-trigger)
 - [Discord status](#discord-status)
 - [Automatic clips](#automatic-clips)
 - [Dual GPU recording](#dual-gpu-recording)
 - [How it works](#how-it-works)
 - [Files and folders](#files-and-folders)
 - [Troubleshooting](#troubleshooting)
+- [Reporting problems](#reporting-problems)
 - [Uninstalling](#uninstalling)
 - [Building from source](#building-from-source)
 - [License](#license)
@@ -40,17 +44,20 @@ Lapse works on Wayland and X11.
 - **Gamepad shortcut**: save a replay by holding a button combination on your controller.
 - **Game detection**: Steam games are recognised by their app id, and each game gets its own clip folder and cover art. Games Lapse does not know can be added by hand.
 - **Games-only mode**: the buffer runs only while a game is open.
-- **Automatic clips** for Counter-Strike 2 and Dota 2, through the games' official Game State Integration.
-- **Separate audio tracks** for desktop audio and microphone, or record only the apps you choose.
-- **Clip editor** with a filmstrip timeline, frame stepping, markers, highlight detection and fullscreen playback.
+- **Automatic clips** for Counter-Strike 2, Dota 2 and League of Legends, through the games' official interfaces.
+- **Separate audio tracks** for desktop audio and microphone, and optionally one track per app (game, Discord, music), so you can mute or turn down each one later.
+- **Microphone noise suppression** (Linux) and a microphone boost with a soft limiter.
+- **Voice trigger**: say a word you recorded to save a clip, without pressing anything.
+- **Clip editor** with a filmstrip timeline, frame stepping, markers, highlight detection, fullscreen playback, cropping, text, image, video and sound overlays, and a volume for each audio track.
 - **Exports**: lossless cut, exact cut, Discord (under 10 MB), vertical 9:16, GIF and MP3.
-- **Sharing** through a public link (Cloudflare tunnel) or a Discord webhook.
+- **Sharing** through a public link (Cloudflare tunnel), a Discord webhook or Streamable. Large clips are shrunk to fit first.
 - **Discord status**: "Counter-Strike 2 with Lapse" with the game's cover on your profile.
-- **Library** with search, favourites, rename, merging several clips into one, and an optional storage limit.
+- **Library** with search, favourites, notes and tags, rename, merging several clips into one, and an optional storage limit.
 - **Audio sync** correction for setups where sound and picture drift apart.
 - **Dual GPU recording**: play on one graphics card and encode on the other.
 - **Self-healing recorder**: if gpu-screen-recorder crashes (driver reset, monitor unplugged), Lapse starts it again.
 - **Command line** for everything the shortcuts do, for scripts and window manager bindings.
+- **Problem reports** from the window or `lapse report`: a report file with your system details and recent logs, and a prefilled GitHub issue.
 - English and Turkish interface.
 
 ## Screenshots
@@ -303,6 +310,23 @@ This installs Lapse for your user into `~/.local/bin`, with a menu entry and
 icon. Run it with `sudo` to install for every user into `/usr/local/bin`.
 Make sure `~/.local/bin` is in your `PATH`.
 
+### Windows
+
+Download `Lapse-<version>-setup.exe` from the
+[releases page](https://github.com/canersin/Lapse/releases/latest) and run it.
+The installer asks for English or Turkish, can start Lapse when you log in, and
+brings its own copy of ffmpeg. `Lapse-<version>-setup.exe /S` installs without
+questions.
+
+- Needs Windows 10 or 11 and a graphics card with a hardware video encoder (NVIDIA, AMD or Intel). H.264 always works; HEVC and AV1 are offered when the card supports them.
+- The exe is not signed yet, so SmartScreen may warn about an unknown publisher. Click **More info** > **Run anyway**.
+- On Windows 10, Windows draws a yellow border around the screen while Lapse records. It is not in your clips, and Lapse can't turn it off there; Windows 11 doesn't show it.
+- Separate app tracks need Windows 10 version 2004 or newer. On older builds the whole output device is recorded.
+- Not on Windows: microphone noise suppression and [Dual GPU recording](#dual-gpu-recording).
+
+Uninstall it from Settings > Apps, like any other program. Your clips and
+settings are kept.
+
 ### Which one should I pick?
 
 - Your distribution has a package above (AUR, .deb, .rpm, Gentoo, Nix): use it. Updates then come with the rest of your system.
@@ -448,10 +472,13 @@ Settings are grouped in tabs. Changes take effect when you press
 
 ### Audio
 
-- **Desktop output**: the PipeWire or PulseAudio device whose sound is recorded.
+- **Desktop output**: the device whose sound is recorded.
 - **Microphone**: the input device, or None.
+- **Noise suppression** (Linux): removes keyboard, fan and background noise from your microphone with RNNoise. Lapse adds a microphone called "Virtual-Microphone"; pick it in Discord or games too, or turn on **Use as default microphone** so every app hears the cleaned-up voice.
+- **Microphone boost**: makes your voice louder in clips, with a soft limiter so it does not clip.
 - **Separate tracks**: desktop sound and microphone become two audio tracks, so you can mute your voice later.
-- **Record only these apps**: pick running apps (for example the game and Discord) to record only their sound. Leave empty for all desktop sound.
+- **Separate app audio**: chosen apps (for example the game, Discord and Spotify) each get their own track, so you can mute or turn one down in the editor. **Find apps automatically** gives every app that plays sound its own track. Applies to new clips.
+- **Never record**: apps whose sound is left out of every track.
 - **Audio sync**: if sound arrives before or after the picture in your clips, shift it here (in milliseconds). **Measure from the last clip** compares loud sounds with sudden changes on screen and suggests a value; it works best with gunshots or explosions.
 
 ### Hotkeys
@@ -460,15 +487,16 @@ Settings are grouped in tabs. Changes take effect when you press
 - **Clips folder**: where clips are saved. Default: `~/Videos/Lapse`.
 - **Gamepad**: on/off and which button combination saves.
 - **Shortcut system**: **Auto** uses the Wayland portal when available and X11 otherwise. Force one of them if shortcuts do not work.
+- **Voice trigger**: see [Voice trigger](#voice-trigger).
 
 ### Services
 
 - **Launch on login**: starts Lapse from your desktop's autostart (`~/.config/autostart/lapse.desktop`), inside the session, so it can reach the screen. Window managers that don't run autostart entries (Hyprland, sway) need `exec lapse --daemon` in their config.
 - **Storage limit**: delete the oldest clips when the folder grows past a size. Off by default. Starred clips are never deleted.
-- **Sharing and privacy**: whether Lapse may fall back to third-party SSH tunnels (localhost.run, serveo.net) when Cloudflare fails.
 - **Discord**:
   - **Show on my profile**: while a game is open, your Discord status reads "Counter-Strike 2 with Lapse", with the game's cover and the Lapse logo. Off by default. See [Discord status](#discord-status).
   - **Webhook link**: used by **Send to Discord**. It is stored only in your configuration file.
+- **Streamable**: your Streamable email and password, for **Upload to Streamable**. **Check** tests them. They are stored in `~/.config/lapse/streamable.json`, readable only by you. If you signed up with Google or Facebook you have no Streamable password; set one with "Forgot password" on streamable.com, or use **Upload in browser**.
 
 ### Appearance
 
@@ -480,6 +508,11 @@ Settings are grouped in tabs. Changes take effect when you press
 - **Check on startup**: look for a new release when the window opens.
 - **Check for updates**: check now.
 
+### Advanced
+
+- **Sharing and privacy**: whether Lapse may fall back to third-party SSH tunnels (localhost.run, serveo.net) when Cloudflare fails.
+- **Diagnostics and logs**: open the daemon, recorder and window logs, and **Report a bug** (see [Reporting problems](#reporting-problems)).
+
 ## Clip editor
 
 Click a clip in the library to open it. From top to bottom:
@@ -488,6 +521,9 @@ Click a clip in the library to open it. From top to bottom:
 - **Player**: click to play or pause, double-click or press `F` for fullscreen.
 - **Timeline**: a strip of frames from the clip. Drag the two handles to select a part. Marks you set with `Shift+F9` appear as small chips, and in Counter-Strike 2 and Dota 2 (with auto clips on) every kill gets a red crosshair mark; click one to jump there. **Find highlights** looks for the loudest moments.
 - **Selection**: exact start and end, quick buttons for the last 10, 15 or 30 seconds, and a loop switch to preview only the selection.
+- **Audio**: a volume slider for each track (desktop, microphone, and each app on its own track), and **Even out loudness** so every clip is about as loud.
+- **Crop**: keep only part of the picture.
+- **Text and media**: put text, an image, a video or a sound on the clip, with its own start and end time, position, size and opacity.
 - **Export**:
 
 | Preset | Result |
@@ -499,15 +535,33 @@ Click a clip in the library to open it. From top to bottom:
 | GIF | Animated GIF. |
 | MP3 | Audio only. |
 
+**Share** next to **Save clip** exports the selection and sends it to Discord or
+Streamable in one step.
+
 ## Sharing
 
-**Share** on a clip offers two ways:
+**Share** on a clip offers three ways:
 
 - **Public link (Cloudflare proxy)**: Lapse serves the clip from your computer and opens a Cloudflare tunnel to it. Anyone with the link can watch it while Lapse runs; nothing is uploaded to a server. This uses Cloudflare's `cloudflared`. If it isn't installed, Lapse downloads the official release from GitHub the first time you share (about 40 MB), checks it against the published SHA-256, and keeps it in `~/.local/share/lapse/bin`. A copy from your package manager is used instead when there is one.
 - **Send to Discord**: uploads the clip to the channel of your webhook. Clips over 10 MB are first shrunk with the Discord preset. If a webhook is set, public links are also posted there.
+- **Upload to Streamable**: uploads the clip to your Streamable account and copies the link. Clips over 250 MB are shrunk first. Streamable takes clips up to 10 minutes; trim longer ones first.
+
+Shrunk copies are made in a temporary folder and deleted after sending, so
+sharing never adds files to your clips folder. Use **Save clip** in the editor
+when you want to keep a copy.
 
 To make a webhook in Discord: Channel settings > Integrations > Webhooks >
 New Webhook > Copy Webhook URL. Paste it under Settings > Services > Discord.
+
+## Voice trigger
+
+Save a clip by saying a word, for example "clip it". Settings > Hotkeys >
+Voice trigger > **Set up** asks you to say your word a few times, then lets you
+test it. **Sensitivity** sets how close a match has to be. The word is matched
+on your computer; no sound leaves it.
+
+`lapse voice-test 15` listens for 15 seconds and prints the microphone level
+and every match, which helps when the trigger does not react.
 
 ## Discord status
 
@@ -525,10 +579,11 @@ token or internet access is involved on Lapse's side. The Discord app
 
 ## Automatic clips
 
-Lapse can save clips by itself in **Counter-Strike 2** and **Dota 2**. It
-uses Game State Integration, the official interface Valve provides for
-tournament overlays and tools: the game sends its state to Lapse. Nothing is
-injected into the game, and it is allowed by Valve.
+Lapse can save clips by itself in **Counter-Strike 2**, **Dota 2** and
+**League of Legends**. For the Valve games it uses Game State Integration, the
+official interface Valve provides for tournament overlays and tools: the game
+sends its state to Lapse. For League of Legends it reads the game's official
+Live Client Data API on your own computer. Nothing is injected into any game.
 
 1. Open Settings > Games > Auto clips and turn the game on.
 2. Click **Connect**. Lapse writes a small configuration file into the game folder.
@@ -541,6 +596,7 @@ When the card shows **Receiving live data**, clips save themselves:
 
 - **Counter-Strike 2**: after a round where you reach the chosen number of kills (2, 3, 4 or Ace). The clip runs until the next round begins, so the end of the round is in it, and never ends sooner than 8 seconds after your last kill. Kills after the round is decided (exit frags) are marked but do not start a new clip.
 - **Dota 2**: after a multi-kill (Double, Triple, Ultra or Rampage). The clip runs until the fight is over.
+- **League of Legends**: after a multi-kill (Double to Penta). League needs no **Connect**; the card shows **Receiving live data** once a match is running.
 
 **Before the first kill** sets, for each game, how much of the build-up is kept
 (5 to 30 seconds). Clips are named after the map or hero and the kills, for
@@ -592,10 +648,19 @@ without re-encoding, which is why it is instant and lossless.
 | `~/Videos/Lapse/` | Clips, in one folder per game (can be changed) |
 | `~/Videos/Lapse/.thumbnails/` | Thumbnails and markers |
 | `~/.config/lapse/config.toml` | Settings |
+| `~/.local/state/lapse/daemon.log` | What the background service did |
 | `~/.local/state/lapse/recorder.log` | gpu-screen-recorder output, useful when recording fails |
+| `~/.local/state/lapse/gui.log` | Errors from the window, including crashes |
+| `~/.local/state/lapse/lapse-report.txt` | The last report made with **Report a bug** or `lapse report` |
 | `$XDG_RUNTIME_DIR/lapse.sock` | Socket between the window, the CLI and the daemon |
 
 The configuration file can be edited by hand. Run `lapse reload` afterwards.
+If it can't be read, the window shows a red bar with the line that is wrong and
+Lapse uses the defaults until it is fixed.
+
+On Windows, settings are in `%APPDATA%\lapse\lapse\config\`, logs and the
+report in `%LOCALAPPDATA%\lapse\lapse\data\`. The Flatpak keeps them under
+`~/.var/app/io.github.canersin.Lapse/`.
 
 ## Troubleshooting
 
@@ -608,12 +673,13 @@ lapse doctor
 It checks the graphics card, audio devices, init system and required tools,
 and tells you what is missing.
 
-- **Nothing is recorded**: look at `~/.local/state/lapse/recorder.log`. Check that `gpu-screen-recorder` is installed and can run on your card.
+- **Nothing is recorded**: look at `~/.local/state/lapse/recorder.log` (Settings > Advanced > **Open Log**). Check that `gpu-screen-recorder` is installed and can run on your card.
 - **Shortcuts do nothing in games on Wayland**: you may have declined the portal prompt. Allow Lapse in your desktop's shortcut settings, or bind `lapse clip` in your compositor (see [Command line](#command-line)).
 - **Shortcuts do nothing on Hyprland, Sway or other wlroots compositors**: these have no GlobalShortcuts portal for most setups. Bind the CLI commands in the compositor's configuration.
 - **Sound is early or late in clips**: Settings > Audio > Audio sync.
 - **The gamepad shortcut does nothing**: your user must be in the `input` group (see [Keyboard shortcuts](#keyboard-shortcuts)).
 - **Auto clips do nothing**: the card must say **Receiving live data**. Restart the game after **Connect**; Dota 2 also needs `-gamestateintegration`.
+- **Something else**: [report it](#reporting-problems). The report has the logs we need.
 
 ## Uninstalling
 
@@ -669,18 +735,7 @@ cargo build --release
 `make` builds the same way, and `make install` installs it (see
 [Gentoo](#gentoo-compiled-with-make)). `cargo test` runs the tests.
 
-To build every release package into `dist/`:
-
-```bash
-make packages
-```
-
-That runs `packaging/build-release.sh`, which needs `podman`. The binary is built
-in an Ubuntu 22.04 container so that it also runs on older distributions; the
-.deb, .rpm (in a Fedora container), AppImage, tar.gz, source tarball, AUR
-recipes (`dist/aur/`), Gentoo ebuild and Flatpak follow from it. Single ones:
-`make deb`, `make rpm`, `make appimage`, `make tar`, `make aur`, `make gentoo`,
-`make flatpak` (the Flatpak needs `flatpak install --user flathub org.flatpak.Builder`).
+The package recipes:
 
 | File | What it is |
 |---|---|
@@ -694,14 +749,17 @@ recipes (`dist/aur/`), Gentoo ebuild and Flatpak follow from it. Single ones:
 
 ## Reporting problems
 
-If you run into an issue or want to confirm that Lapse works on your setup, you can report it directly from the app or CLI:
+Lapse can't be tested on every graphics card and distribution, so reports
+help a lot, including "it works" ones.
 
-- **In the GUI**: Open the **About** tab and find the **Report a problem** card. Clicking **Report a bug** generates `lapse-report.txt`, opens the folder containing it, and opens a prefilled GitHub issue in your browser. Clicking **It works on my PC** opens a compatibility report with your system details prefilled.
-- **In the CLI**: Run `lapse report`. It prints your system details, generates `lapse-report.txt`, and outputs direct links to create a bug report or compatibility report on GitHub.
+- **In the window**: About > **Report a problem**, or Settings > Advanced > **Report a bug**. Lapse writes `lapse-report.txt`, opens the folder it is in, and opens a GitHub issue with your version, system, desktop, graphics card and install method filled in. Describe what happened and attach the file. **It works on my PC** opens a short compatibility report instead.
+- **On the command line**: `lapse report` writes the same file and prints both links.
 
-The report file contains your Lapse version, OS and kernel / Windows build, desktop session, detected GPU, install method, recorder backend, active capture settings, and the last 150 lines of recent logs (`daemon.log`, `recorder.log`, `gui.log`). For privacy, your home directory is replaced with `~`, your user name is replaced with `<user>`, and Discord webhook URLs are redacted.
-
-"It works on my PC" compatibility reports are always welcome because we cannot test every GPU and OS combination, and these reports help build the compatibility list.
+The report has your settings and the last 150 lines of `daemon.log`,
+`recorder.log` and `gui.log`. Your home folder is replaced with `~`, your user
+name with `<user>`, and Discord webhook links are removed. Read it before you
+attach it if you want to be sure. You need a free GitHub account to open an
+issue.
 
 ## License
 

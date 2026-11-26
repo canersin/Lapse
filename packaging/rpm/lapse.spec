@@ -1,5 +1,5 @@
 # Packs the release binary (Lapse-<version>-x86_64.tar.gz) for Fedora, openSUSE
-# and other RPM distributions. packaging/build-release.sh builds it in Fedora.
+# and other RPM distributions.
 %global debug_package %{nil}
 
 Name:           lapse
