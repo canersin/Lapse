@@ -736,6 +736,18 @@ name = "Türkçe"
 "Wrong Streamable email or password" = "Yanlış Streamable e-postası veya şifresi"
 "Streamable is rate limiting, try again later" = "Streamable hız sınırı uyguluyor, daha sonra tekrar deneyin"
 "File is over Streamable's 250 MB limit" = "Dosya Streamable'ın 250 MB sınırını aşıyor"
+"Shrinks the clip to under 250 MB for Streamable." = "Klibi Streamable için 250 MB'ın altına küçültür."
+"Shrinks the clip to under 250 MB, then uploads it." = "Klibi 250 MB'ın altına küçültür, ardından yükler."
+"Streamable takes clips up to 10 minutes. Trim it first." = "Streamable en fazla 10 dakikalık klipleri kabul eder. Önce kırpın."
+"Clip is longer than Streamable's 10-minute limit, trim it first" = "Klip Streamable'ın 10 dakikalık sınırından uzun, önce kırpın"
+"Streamable credentials not configured" = "Streamable giriş bilgileri yapılandırılmamış"
+"Shrinking for Streamable..." = "Streamable için küçültülüyor..."
+"Upload in browser" = "Tarayıcıda yükle"
+"Opens streamable.com and the clip's folder, so you can drag the clip in." = "streamable.com'u ve klibin klasörünü açar, böylece klibi sürükleyebilirsiniz."
+"Check" = "Kontrol Et"
+"Checking account..." = "Hesap kontrol ediliyor..."
+"Signed in to Streamable" = "Streamable'a giriş yapıldı"
+"Signed up with Google or Facebook? Streamable only accepts an email and password here. If your account has no password, set one on streamable.com (try \"Forgot password\" on the log-in page with the same email), or use \"Upload in browser\" from the Share menu." = "Google veya Facebook ile mi kaydoldunuz? Streamable burada yalnızca e-posta ve şifre kabul eder. Hesabınızın şifresi yoksa streamable.com üzerinden bir şifre belirleyin (aynı e-postayla giriş sayfasındaki \"Şifremi unuttum\" seçeneğini deneyin) veya Paylaş menüsündeki \"Tarayıcıda yükle\" seçeneğini kullanın."
 
 # Overlays (Trimmer)
 "Add text" = "Metin Ekle"
@@ -803,3 +815,15 @@ name = "Türkçe"
 "Game & desktop" = "Oyun ve masaüstü"
 "Windows 10 shows a yellow border around the screen while recording. It is not in your clips, and Windows 11 doesn't show it." = "Windows 10 kayıt sırasında ekranın etrafında sarı bir çerçeve gösterir. Kliplerinde görünmez, Windows 11'de çıkmaz."
 "Not on the game screen" = "Oyun ekranında değil"
+
+# Report
+"Report a problem" = "Sorun bildir"
+"Opens a GitHub issue with your system details filled in. Attach lapse-report.txt from the folder that opens: it has your recent logs, with your user name removed. You need a free GitHub account." = "Sistem bilgileriniz doldurulmuş şekilde bir GitHub sorunu açar. Açılan klasördeki lapse-report.txt dosyasını ekleyin: kullanıcı adınız kaldırılmış şekilde son günlüklerinizi içerir. Ücretsiz bir GitHub hesabı gerekir."
+"Report a bug" = "Hata bildir"
+"It works on my PC" = "Bilgisayarımda çalışıyor"
+
+# Config error
+"Your settings file has an error, so Lapse is using default settings. Your old file was kept as config.toml.bak." = "Ayar dosyanızda bir hata var, bu yüzden Lapse varsayılan ayarları kullanıyor. Eski dosyanız config.toml.bak olarak saklandı."
+"Open settings file" = "Ayar dosyasını aç"
+"Dismiss" = "Kapat"
+

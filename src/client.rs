@@ -5,6 +5,36 @@ use eframe::egui;
 use std::sync::Arc;
 
 pub fn run_gui_client() -> anyhow::Result<()> {
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".into());
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            *s
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.as_str()
+        } else {
+            "unknown panic"
+        };
+        let log = crate::daemon::log_path().with_file_name("gui.log");
+        if let Some(parent) = log.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log) {
+            use std::io::Write;
+            let _ = writeln!(
+                f,
+                "{} GUI panic at {}: {}",
+                chrono::Local::now().format("%F %T"),
+                location,
+                msg
+            );
+        }
+        prev_hook(info);
+    }));
+
     if crate::gui::single_instance::raise_existing() {
         println!("Lapse is already open; brought its window to the front.");
         return Ok(());

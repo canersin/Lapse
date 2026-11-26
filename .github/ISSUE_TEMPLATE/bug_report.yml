@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a bug or problem in Lapse
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Fill in the details below or use the in-app **Report a problem** button / `lapse report` to prefill them automatically.
+  - type: input
+    id: version
+    attributes:
+      label: Lapse version
+      description: Version of Lapse you are running.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Your OS distribution or Windows version and kernel/build.
+    validations:
+      required: true
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop session
+      description: Desktop environment and session type (e.g. GNOME Wayland, KDE X11, or Windows).
+    validations:
+      required: false
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card (GPU)
+      description: Your GPU model(s).
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Installation method
+      description: How Lapse was installed (e.g. AppImage, Flatpak, system package, Windows installer).
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does this happen?
+      options:
+        - Every time
+        - Sometimes
+        - Once
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can someone else make this happen again?
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report & logs
+      description: Paste the output of `lapse report` or attach your `lapse-report.txt` file here.
+    validations:
+      required: false

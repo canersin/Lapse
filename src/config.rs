@@ -1,10 +1,27 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex;
 use anyhow::Result;
 use directories::ProjectDirs;
 use global_hotkey::hotkey::Code;
 
 use crate::hotkeys::HotkeyEvent;
+
+/// Why config.toml could not be read this run (first line of the parse error), if it couldn't.
+static LOAD_ERROR: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn load_error() -> Option<String> {
+    LOAD_ERROR.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn record_load_error(err: &toml::de::Error) {
+    let first_line = err.to_string().lines().next().unwrap_or_default().trim().to_string();
+    *LOAD_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = Some(first_line);
+}
+
+pub fn clear_load_error() {
+    *LOAD_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
@@ -472,16 +489,21 @@ impl Config {
     pub fn load() -> Result<Self> {
         let config_path = Self::get_config_path()?;
         if !config_path.exists() {
+            clear_load_error();
             let config = Self::default();
             config.save()?;
             return Ok(config);
         }
         let content = std::fs::read_to_string(&config_path)?;
         let mut config: Config = match toml::from_str(&content) {
-            Ok(c) => c,
+            Ok(c) => {
+                clear_load_error();
+                c
+            }
             Err(e) => {
                 // Never crash on a broken config: keep a backup and fall back to defaults.
                 eprintln!("Lapse: config is invalid ({}), using defaults", e);
+                record_load_error(&e);
                 let _ = std::fs::copy(&config_path, config_path.with_extension("toml.bak"));
                 Self::default()
             }
@@ -727,5 +749,24 @@ mod tests {
                 resolution: "".into()
             })
         );
+    }
+
+    #[test]
+    fn test_config_load_error_recording() {
+        clear_load_error();
+        assert_eq!(load_error(), None);
+
+        let invalid_toml = "fps = \"not_a_number\"\n[broken";
+        let err = toml::from_str::<Config>(invalid_toml).unwrap_err();
+        record_load_error(&err);
+
+        let recorded = load_error();
+        assert!(recorded.is_some());
+        let err_str = recorded.unwrap();
+        assert!(err_str.contains("line"), "expected line number in error: {}", err_str);
+        assert!(!err_str.contains('\n'), "expected only the first line");
+
+        clear_load_error();
+        assert_eq!(load_error(), None);
     }
 }

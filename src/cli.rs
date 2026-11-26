@@ -62,6 +62,7 @@ pub fn handle_cli(args: &[String]) -> anyhow::Result<bool> {
         "open-config" => handle_open_config(),
         "list-keys" | "keys" => handle_list_keys(),
         "doctor" => handle_doctor(),
+        "report" => handle_report(),
         "run" => {
             #[cfg(windows)]
             {
@@ -96,7 +97,18 @@ pub fn handle_cli(args: &[String]) -> anyhow::Result<bool> {
             print_help();
             Ok(true)
         }
-        _ => Ok(false),
+        "version" | "--version" | "-v" | "-V" => {
+            println!("Lapse {}", env!("CARGO_PKG_VERSION"));
+            Ok(true)
+        }
+        // Flags Lapse starts itself with (autostart, the tray, the desktop file).
+        "--daemon" | "--gui" => Ok(false),
+        // Anything else used to fall through and start a second daemon.
+        _ => {
+            eprintln!("\x1b[1;31m[ERROR]\x1b[0m Unknown command: {}", args[0]);
+            print_help();
+            Ok(true)
+        }
     }
 }
 
@@ -727,6 +739,31 @@ fn handle_doctor() -> anyhow::Result<bool> {
     Ok(true)
 }
 
+fn handle_report() -> anyhow::Result<bool> {
+    let info = crate::report::system_info();
+    let report_path = crate::report::write_report()?;
+
+    println!("\x1b[1;35m=======================================\x1b[0m");
+    println!("\x1b[1;35m             LAPSE REPORT              \x1b[0m");
+    println!("\x1b[1;35m=======================================\x1b[0m");
+    println!("  Version:       {}", info.version);
+    println!("  OS:            {}", info.os);
+    println!("  Desktop:       {}", info.desktop);
+    println!("  GPU:           {}", info.gpu);
+    println!("  Install:       {}", info.install);
+    println!("");
+    println!("  Report file:   \x1b[1;32m{}\x1b[0m", report_path.display());
+    println!("  Please attach or drag & drop this file when creating your GitHub issue.");
+    println!("");
+    println!("  \x1b[1;34mBug report URL:\x1b[0m");
+    println!("    {}", crate::report::issue_url(crate::report::IssueKind::Bug, &info));
+    println!("");
+    println!("  \x1b[1;34mWorks on my system URL:\x1b[0m");
+    println!("    {}", crate::report::issue_url(crate::report::IssueKind::WorksForMe, &info));
+    println!("");
+    Ok(true)
+}
+
 fn handle_uninstall() -> anyhow::Result<bool> {
     println!("\x1b[1;33mRemoving Lapse autostart...\x1b[0m");
     sync_autostart(false);
@@ -962,6 +999,7 @@ fn print_help() {
     println!(
         "  \x1b[1;36mdoctor\x1b[0m                Run startup diagnostics (GPU, Audio, Init, SSH)"
     );
+    println!("  \x1b[1;36mreport\x1b[0m                Generate system report and GitHub issue links");
     #[cfg(not(windows))]
     println!("  \x1b[1;36mgpus\x1b[0m                  Show GPUs and the dual GPU (game / encoder) setup");
     #[cfg(not(windows))]

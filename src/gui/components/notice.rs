@@ -92,3 +92,87 @@ pub fn render_setup_dialog(ctx: &egui::Context, theme: &MonetTheme) -> Option<us
     }
     open.then_some(setup.settings_tab)
 }
+
+/// Slim warning bar shown at the top of the main content area when config.toml failed to parse.
+pub fn render_config_error_notice(
+    ui: &mut egui::Ui,
+    theme: &MonetTheme,
+    error_text: &str,
+    dismissed: &mut bool,
+) {
+    egui::Frame::none()
+        .fill(theme.error_container)
+        .stroke(Stroke::new(1.0_f32, theme.error))
+        .rounding(M3Shapes::LARGE)
+        .inner_margin(Margin::symmetric(16.0, 10.0))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                m3_vector_icon(ui, IconKind::Warning, 20.0, theme.on_error_container);
+                ui.add_space(10.0);
+
+                let buttons_width = 250.0;
+                let text_width = (ui.available_width() - buttons_width).max(120.0);
+
+                ui.allocate_ui_with_layout(
+                    Vec2::new(text_width, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(text_width);
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(t(
+                                    "Your settings file has an error, so Lapse is using default settings. Your old file was kept as config.toml.bak.",
+                                ))
+                                .size(13.0)
+                                .strong()
+                                .color(theme.on_error_container),
+                            )
+                            .wrap(true),
+                        );
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(error_text)
+                                    .size(11.5)
+                                    .color(theme.on_error_container.gamma_multiply(0.85)),
+                            )
+                            .wrap(true),
+                        );
+                    },
+                );
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let dismiss_btn = egui::Button::new(
+                        RichText::new(t("Dismiss"))
+                            .size(12.0)
+                            .strong()
+                            .color(theme.on_error_container),
+                    )
+                    .fill(theme.error_container)
+                    .stroke(Stroke::new(1.0_f32, theme.on_error_container.gamma_multiply(0.5)))
+                    .rounding(M3Shapes::FULL);
+
+                    if ui.add(dismiss_btn).clicked() {
+                        *dismissed = true;
+                    }
+
+                    ui.add_space(8.0);
+
+                    let open_btn = egui::Button::new(
+                        RichText::new(t("Open settings file"))
+                            .size(12.0)
+                            .strong()
+                            .color(theme.on_error_container),
+                    )
+                    .fill(theme.error_container)
+                    .stroke(Stroke::new(1.0_f32, theme.on_error_container.gamma_multiply(0.5)))
+                    .rounding(M3Shapes::FULL);
+
+                    if ui.add(open_btn).clicked() {
+                        if let Ok(path) = crate::config::Config::get_config_path() {
+                            let _ = open::that(path);
+                        }
+                    }
+                });
+            });
+        });
+}

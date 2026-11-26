@@ -31,6 +31,7 @@ mod ipc;
 mod recorder;
 mod recorder_windows;
 mod rename;
+mod report;
 pub mod share;
 mod sound;
 pub mod streamable;

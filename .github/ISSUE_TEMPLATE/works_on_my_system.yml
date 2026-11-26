@@ -1,0 +1,57 @@
+name: Works on my system
+description: Let us know that Lapse works well on your setup! These reports build the compatibility list.
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting! These reports build the compatibility list so other gamers know which GPUs and systems are supported.
+  - type: input
+    id: version
+    attributes:
+      label: Lapse version
+      description: Version of Lapse you are running.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Your OS distribution or Windows version and kernel/build.
+    validations:
+      required: true
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop session
+      description: Desktop environment and session type.
+    validations:
+      required: false
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card (GPU)
+      description: Your GPU model(s).
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Installation method
+      description: How Lapse was installed.
+    validations:
+      required: true
+  - type: textarea
+    id: games
+    attributes:
+      label: Games & apps recorded
+      description: Which games or applications did you test recording with?
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Any helpful details or comments about performance and settings.
+    validations:
+      required: false

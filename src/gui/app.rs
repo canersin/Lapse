@@ -55,6 +55,7 @@ pub struct LapseApp {
     pub shared_status: Arc<Mutex<Option<ipc::StatusResponse>>>,
     pub toasts: Toasts,
     pub daemon_seen: bool,
+    pub config_error_dismissed: bool,
 }
 
 static IPC_SENDER: std::sync::OnceLock<Mutex<Sender<ipc::Command>>> = std::sync::OnceLock::new();
@@ -174,6 +175,7 @@ impl LapseApp {
             shared_status,
             toasts: Toasts::default(),
             daemon_seen: false,
+            config_error_dismissed: false,
         }
     }
 
@@ -517,6 +519,18 @@ impl eframe::App for LapseApp {
                     .inner_margin(Margin::same(20.0)),
             )
             .show(ctx, |ui| {
+                if !self.config_error_dismissed {
+                    if let Some(ref err) = crate::config::load_error() {
+                        crate::gui::components::notice::render_config_error_notice(
+                            ui,
+                            &self.theme,
+                            err,
+                            &mut self.config_error_dismissed,
+                        );
+                        ui.add_space(12.0);
+                    }
+                }
+
                 let share_snapshot = crate::share::GLOBAL_SHARE_STATE
                     .lock()
                     .ok()

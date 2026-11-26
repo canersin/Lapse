@@ -97,6 +97,58 @@ pub fn render_about(
 
             m3_card(ui, theme, |ui| {
                 ui.vertical(|ui| {
+                    ui.label(M3Typography::title_medium(t("Report a problem"), theme.on_surface));
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.label(
+                        RichText::new(t("Opens a GitHub issue with your system details filled in. Attach lapse-report.txt from the folder that opens: it has your recent logs, with your user name removed. You need a free GitHub account."))
+                            .size(12.5)
+                            .color(theme.on_surface_variant),
+                    );
+                    ui.add_space(12.0);
+
+                    let error_id = ui.id().with("report_error");
+                    if let Some(err) = ui.data(|d| d.get_temp::<String>(error_id)) {
+                        ui.label(RichText::new(&err).size(12.0).color(theme.error));
+                        ui.add_space(8.0);
+                    }
+
+                    ui.horizontal(|ui| {
+                        if m3_small_button_colored(ui, theme, t("Report a bug"), theme.primary).clicked() {
+                            match crate::report::write_report() {
+                                Ok(report_path) => {
+                                    ui.data_mut(|d| d.remove::<String>(error_id));
+                                    let info = crate::report::system_info();
+                                    let url = crate::report::issue_url(crate::report::IssueKind::Bug, &info);
+                                    let _ = open::that(&url);
+                                    if let Some(parent) = report_path.parent() {
+                                        let _ = open::that(parent);
+                                    } else {
+                                        let _ = open::that(&report_path);
+                                    }
+                                }
+                                Err(e) => {
+                                    ui.data_mut(|d| d.insert_temp(error_id, e.to_string()));
+                                }
+                            }
+                        }
+
+                        ui.add_space(8.0);
+
+                        if m3_outlined_button(ui, theme, t("It works on my PC")).clicked() {
+                            let info = crate::report::system_info();
+                            let url = crate::report::issue_url(crate::report::IssueKind::WorksForMe, &info);
+                            let _ = open::that(&url);
+                        }
+                    });
+                });
+            });
+            ui.add_space(16.0);
+
+            m3_card(ui, theme, |ui| {
+                ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.label(M3Typography::title_medium(t("Software Updates"), theme.on_surface));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

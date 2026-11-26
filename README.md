@@ -660,6 +660,17 @@ recipes (`dist/aur/`), Gentoo ebuild and Flatpak follow from it. Single ones:
 | `com.canersin.Lapse.yml`, `flatpak/` | Flatpak manifest; `flatpak/cargo-sources.py` lists the crates |
 | `flake.nix`, `nix/package.nix` | Nix flake |
 
+## Reporting problems
+
+If you run into an issue or want to confirm that Lapse works on your setup, you can report it directly from the app or CLI:
+
+- **In the GUI**: Open the **About** tab and find the **Report a problem** card. Clicking **Report a bug** generates `lapse-report.txt`, opens the folder containing it, and opens a prefilled GitHub issue in your browser. Clicking **It works on my PC** opens a compatibility report with your system details prefilled.
+- **In the CLI**: Run `lapse report`. It prints your system details, generates `lapse-report.txt`, and outputs direct links to create a bug report or compatibility report on GitHub.
+
+The report file contains your Lapse version, OS and kernel / Windows build, desktop session, detected GPU, install method, recorder backend, active capture settings, and the last 150 lines of recent logs (`daemon.log`, `recorder.log`, `gui.log`). For privacy, your home directory is replaced with `~`, your user name is replaced with `<user>`, and Discord webhook URLs are redacted.
+
+"It works on my PC" compatibility reports are always welcome because we cannot test every GPU and OS combination, and these reports help build the compatibility list.
+
 ## License
 
 Lapse is free software under the [GNU General Public License v3.0](LICENSE).
