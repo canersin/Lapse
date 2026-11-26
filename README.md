@@ -11,7 +11,10 @@ Recording is done by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-r
 which encodes on the graphics card, so the cost in frame rate is very small.
 Lapse works on Wayland and X11.
 
+![The Lapse home screen](docs/screenshots/01-home.png)
+
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Installation](#installation)
 - [First start](#first-start)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -49,6 +52,27 @@ Lapse works on Wayland and X11.
 - **Self-healing recorder**: if gpu-screen-recorder crashes (driver reset, monitor unplugged), Lapse starts it again.
 - **Command line** for everything the shortcuts do, for scripts and window manager bindings.
 - English and Turkish interface.
+
+## Screenshots
+
+Trimming a clip: drag the start and end of the selection on the filmstrip while it plays.
+
+![Trimming a clip in the editor](docs/screenshots/trim-demo.gif)
+
+The library, filtered by game, and the share menu.
+
+![Browsing the clip library](docs/screenshots/library-demo.gif)
+
+The settings tabs.
+
+![Going through the settings](docs/screenshots/settings-demo.gif)
+
+| | |
+|---|---|
+| ![Clip library](docs/screenshots/02-library.png) | ![Share menu](docs/screenshots/03-share-menu.png) |
+| ![Clip editor](docs/screenshots/04-editor.png) | ![Recording settings](docs/screenshots/05-settings-recording.png) |
+| ![Game settings](docs/screenshots/06-settings-games.png) | ![Audio settings](docs/screenshots/07-settings-audio.png) |
+| ![About and problem reports](docs/screenshots/08-about.png) | |
 
 ## Installation
 
